@@ -263,13 +263,11 @@ export class World {
     this.scene.add(await b.build());
     this.lanterns(hx, hz, y, R - 3, big ? 10 : 6);
     const stall = this.buildStall(new THREE.Vector3(hx + (big ? 7 : 8), y, hz + (big ? -9 : -6)), big ? -0.6 : -0.9);
-    const duel = big ? this.buildDuelRing(new THREE.Vector3(hx - 9, y, hz + 9)) : null;
-    const hub = { index: i, zone, pos: new THREE.Vector3(hx, y, hz), fire, glow, stall, duel, waystone: ws, merchantPos: stall.merchantPos, merchantRot: stall.rot, firePos };
+    const hub = { index: i, zone, pos: new THREE.Vector3(hx, y, hz), fire, glow, stall, waystone: ws, merchantPos: stall.merchantPos, merchantRot: stall.rot, firePos };
     this.hubs.push(hub);
     this.interactables.push({ id: 'hearth', hub, pos: new THREE.Vector3(hx, y, hz), radius: 4, label: `rest at the ${zone.hubName} hearth` });
     this.interactables.push({ id: 'shop', hub, pos: stall.front, radius: 3.2, label: 'trade with the merchant' });
     this.interactables.push({ id: 'waystone', hub, pos: ws, radius: 3.4, label: `touch the ${zone.hubName} waystone` });
-    if (duel) this.interactables.push({ id: 'duel', hub, pos: duel, radius: 4.5, label: 'duel ring · stand near a player and press f' });
   }
 
   lanterns(hx, hz, y, r, count) {
@@ -318,22 +316,6 @@ export class World {
       merchantPos: new THREE.Vector3(0, 0, -0.3).applyAxisAngle(axis, rot).add(pos),
       front: new THREE.Vector3(0, 0, 2.6).applyAxisAngle(axis, rot).add(pos),
     };
-  }
-
-  buildDuelRing(pos) {
-    const disc = new THREE.Mesh(new THREE.PlaneGeometry(9, 9), DUEL_MAT);
-    disc.rotation.x = -Math.PI / 2;
-    disc.position.copy(pos).add(new THREE.Vector3(0, 0.06, 0));
-    this.scene.add(disc);
-    const b = new StaticBatcher();
-    for (let i = 0; i < 6; i++) {
-      const a = (i / 6) * Math.PI * 2;
-      const x = pos.x + Math.cos(a) * 5.4, z = pos.z + Math.sin(a) * 5.4;
-      b.add(i % 2 ? 'statue_columnDamaged' : 'statue_column', new THREE.Matrix4().compose(new THREE.Vector3(x, pos.y, z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), a), new THREE.Vector3(2.2, 2.2, 2.2)));
-      this.colliders.add(x, z, 0.6);
-    }
-    b.build().then((g) => this.scene.add(g));
-    return pos;
   }
 
   makeGlow(pos, color, scale = 5) {
@@ -421,7 +403,6 @@ export class World {
     this.motes.uTime.value = t;
     this.motes.uCenter.value.copy(playerPos);
     FIRE_UNIFORMS.uTime.value = t;
-    DUEL_MAT.uniforms.uTime.value = t;
     CANOPY_U.uTime.value = t;
     this.updateAtmosphere(dt, playerPos);
     // a single point light, parked at the nearest hearth
@@ -490,20 +471,3 @@ function cardStacks() {
   });
   return mergeGeometries(cards);
 }
-const DUEL_MAT = new THREE.ShaderMaterial({
-  transparent: true,
-  depthWrite: false,
-  blending: THREE.AdditiveBlending,
-  uniforms: { uTime: { value: 0 } },
-  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-  fragmentShader: `uniform float uTime; varying vec2 vUv;
-    void main(){
-      vec2 p = vUv * 2.0 - 1.0; float r = length(p); float a = atan(p.y, p.x);
-      float ring = smoothstep(0.03, 0.0, abs(r - 0.92)) + smoothstep(0.02, 0.0, abs(r - 0.78)) * 0.7;
-      float runes = step(0.5, fract(a * 6.0 / 3.14159 + uTime * 0.1)) * smoothstep(0.03, 0.0, abs(r - 0.85));
-      float star = smoothstep(0.02, 0.0, abs(r - 0.5 - 0.1 * sin(a * 5.0 + uTime * 0.5)));
-      float glow = (ring + runes * 0.8 + star * 0.6) * (0.75 + 0.25 * sin(uTime * 2.0));
-      glow += smoothstep(1.0, 0.0, r) * 0.08;
-      gl_FragColor = vec4(vec3(0.75, 0.55, 1.0) * glow, glow);
-    }`,
-});

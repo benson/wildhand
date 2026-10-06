@@ -237,6 +237,7 @@ export class Game {
       if (e.code === 'Escape' && typing) { this.hud.chatIn.classList.add('hidden'); this.hud.chatIn.blur(); this.input.enabled = true; return; }
       if (typing) return;
       if (this.state !== 'explore') return;
+      if (e.repeat) return;
       if (e.code === 'KeyE') this.interact();
       if (e.code === 'KeyF') this.challenge();
       if (e.code === 'Tab') { e.preventDefault(); this.openDeck(); }
@@ -440,8 +441,6 @@ export class Game {
       this.save();
     } else if (it.id === 'shop') {
       this.openShop(it.hub);
-    } else if (it.id === 'duel') {
-      this.toast(this.remotes.map.size ? 'walk up to another player and press f to duel' : 'no one else is here yet — share the link with a friend!');
     }
     return true;
   }
@@ -583,8 +582,10 @@ export class Game {
     });
     net.on('duelReq', (d, pid) => this.onDuelRequest(d, pid));
     net.on('duelAns', (d, pid) => this.onDuelAnswer(d, pid));
+    net.on('duelGo', (d, pid) => this.onDuelGo(d, pid));
     net.on('duelScore', (d, pid) => {
       if (!this.duel || this.duel.opp !== pid || d.id !== this.duel.id) return;
+      this.duel.heard = true;
       this.duel.oppTotal = d.total;
       this.duel.oppHands = d.handsLeft;
       this.battleUI.setOpponent({ name: this.duel.oppName, total: d.total, handsLeft: d.handsLeft });
@@ -950,8 +951,12 @@ export class Game {
   }
 
   // ---------------------------------------------------------------- duels
+  // handshake: challenger sends duelReq, the other side answers duelAns, and only the
+  // challenger's duelGo starts the duel on both ends. a duel whose opponent never shows
+  // up as busy is called off, so nobody plays against an empty chair.
   challenge() {
     if (this.state !== 'explore') return;
+    if (this.pendingDuel && performance.now() - this.pendingDuel.at < 20000) return;
     const opp = this.remotes.nearest(this.player.pos, 6);
     if (!opp) return;
     if (opp.state.b) { this.toast(`${opp.state.n} is busy`); return; }
@@ -971,7 +976,23 @@ export class Game {
     this.duelPrompting = false;
     this.state = 'explore';
     this.net.send('duelAns', { id: d.id, ok }, pid);
-    if (ok) this.startDuel(d.id, pid);
+    if (!ok) return;
+    this.awaitingGo = { id: d.id, pid };
+    clearTimeout(this.goTimer);
+    this.goTimer = setTimeout(() => {
+      if (this.awaitingGo?.id !== d.id) return;
+      this.awaitingGo = null;
+      this.toast("the duel didn't connect");
+    }, 6000);
+  }
+
+  onDuelGo(d, pid) {
+    const a = this.awaitingGo;
+    if (!a || a.id !== d?.id || a.pid !== pid) return;
+    this.awaitingGo = null;
+    clearTimeout(this.goTimer);
+    if (this.state !== 'explore') return;
+    this.startDuel(d.id, pid);
   }
 
   onDuelAnswer(d, pid) {
@@ -981,6 +1002,7 @@ export class Game {
     const r = this.remotes.map.get(pid);
     if (!d.ok) { this.toast(`${r?.state.n || 'they'} declined`); return; }
     if (this.state !== 'explore') return;
+    this.net.send('duelGo', { id: d.id }, pid);
     this.startDuel(d.id, pid);
   }
 
@@ -988,7 +1010,14 @@ export class Game {
     const r = this.remotes.map.get(pid);
     if (!r) return;
     this.state = 'duel';
-    this.duel = { id, opp: pid, oppName: r.state.n, oppTotal: 0, oppHands: 4, meDone: false, oppDone: false };
+    this.duel = { id, opp: pid, oppName: r.state.n, oppTotal: 0, oppHands: 4, meDone: false, oppDone: false, heard: false };
+    clearTimeout(this.duelCheck);
+    this.duelCheck = setTimeout(() => {
+      const d = this.duel;
+      if (!d || d.id !== id || d.heard || this.remotes.map.get(pid)?.state.b) return;
+      this.cancelDuel(`${d.oppName} didn't join the duel`);
+    }, 7000);
+    this.sendState(true);
     const p = this.player;
     p.locked = true;
     const dir = new THREE.Vector3(r.pos.x - p.pos.x, 0, r.pos.z - p.pos.z);
@@ -1030,9 +1059,23 @@ export class Game {
     }, 700);
   }
 
+  cancelDuel(msg) {
+    clearTimeout(this.duelTimeout);
+    clearTimeout(this.duelCheck);
+    this.duel = null;
+    this.battleUI.close();
+    this.player.locked = false;
+    this.player.camOverride = null;
+    this.setHudVisible(true);
+    this.battle = null;
+    this.state = 'explore';
+    this.toast(msg);
+  }
+
   finishDuel(forfeit) {
     const d = this.duel;
     if (!d) return;
+    clearTimeout(this.duelCheck);
     clearTimeout(this.duelTimeout);
     this.duel = null;
     const me = this.battle?.total || 0;
