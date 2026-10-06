@@ -95,7 +95,7 @@ export class World {
     scene.fog = new THREE.Fog(SKY.fog.clone(), 70, 420);
 
     // lights
-    const hemi = new THREE.HemisphereLight('#a9c4ff', '#7a6248', 1.15);
+    const hemi = new THREE.HemisphereLight('#b4c8ff', '#8a7050', 1.3);
     scene.add(hemi);
     const sun = new THREE.DirectionalLight('#ffe0bd', 2.9);
     sun.position.copy(SUN_DIR).multiplyScalar(120);

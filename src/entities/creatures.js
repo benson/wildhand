@@ -26,7 +26,7 @@ function weighted(list, rng) {
 export function enemyStats(species, level) {
   const s = CREATURES[species];
   return {
-    hp: Math.round(70 * s.hp * Math.pow(1.55, level - 1)),
+    hp: Math.round(70 * s.hp * Math.pow(1.8, level - 1)),
     atk: Math.max(2, Math.round((2.5 + 1.5 * level) * s.atk)),
   };
 }

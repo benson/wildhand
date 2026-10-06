@@ -9,28 +9,26 @@ function leafTexture() {
   cv.width = cv.height = s;
   const g = cv.getContext('2d');
   g.clearRect(0, 0, s, s);
-  // a cluster of pointed leaves around the card center
-  const leaves = 11;
+  // a cluster of rounded leaves around the card center
+  const leaves = 16;
   for (let i = 0; i < leaves; i++) {
-    const a = (i / leaves) * Math.PI * 2 + Math.random() * 0.4;
-    const r = 18 + Math.random() * 20;
+    const a = (i / leaves) * Math.PI * 2 + Math.random() * 0.5;
+    const r = 16 + Math.random() * 24;
     const x = s / 2 + Math.cos(a) * r, y = s / 2 + Math.sin(a) * r;
     g.save();
     g.translate(x, y);
     g.rotate(a + Math.PI / 2);
-    const l = 22 + Math.random() * 10, w = 10 + Math.random() * 4;
-    const sh = 200 + Math.floor(Math.random() * 55);
+    const l = 15 + Math.random() * 7, w = 11 + Math.random() * 5;
+    const sh = 205 + Math.floor(Math.random() * 50);
     g.fillStyle = `rgb(${sh},${sh},${sh})`;
     g.beginPath();
-    g.moveTo(0, -l);
-    g.quadraticCurveTo(w, 0, 0, l);
-    g.quadraticCurveTo(-w, 0, 0, -l);
+    g.ellipse(0, 0, w, l, 0, 0, Math.PI * 2);
     g.fill();
     g.restore();
   }
   g.fillStyle = '#ffffff';
   g.beginPath();
-  g.arc(s / 2, s / 2, 26, 0, Math.PI * 2);
+  g.arc(s / 2, s / 2, 30, 0, Math.PI * 2);
   g.fill();
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -185,8 +183,12 @@ export class Forest {
         // dissolve leaves close to the camera so they never fill the screen
         .replace('#include <alphatest_fragment>', `#include <alphatest_fragment>
           float camD = distance(vLeafW, cameraPosition);
-          float dither = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
-          if (camD < 2.5 + dither * 2.0) discard;`)
+          // 4x4 bayer screen-door fade
+          ivec2 bp = ivec2(mod(gl_FragCoord.xy, 4.0));
+          int bi = bp.x + bp.y * 4;
+          float bayer[16] = float[16](0.,8.,2.,10.,12.,4.,14.,6.,3.,11.,1.,9.,15.,7.,13.,5.);
+          float dither = bayer[bi] / 16.0;
+          if (camD < 2.0 + dither * 2.2) discard;`)
         .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * 0.12;');
     };
     this.trunkMat = new THREE.MeshStandardMaterial({ color: '#6e4c34', roughness: 0.95, vertexColors: true });

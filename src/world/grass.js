@@ -79,7 +79,7 @@ float alive = step(aRand.w, density * 1.15);
 vec2 rel = root - uCenter;
 float edge = 1.0 - smoothstep(half_ * 0.45, half_ * 0.95, length(rel));
 float forest = d.b, high = d.a;
-float hgt = (0.28 + 0.42 * aRand.x) * mix(0.7, 1.05, density) * alive * edge;
+float hgt = (0.28 + 0.42 * aRand.x) * mix(0.7, 1.05, density) * smoothstep(0.15, 0.6, density) * alive * edge;
 hgt *= mix(1.0, 1.35, forest) * mix(1.0, 0.7, high);
 float t = position.y;
 float live = step(0.02, hgt);

@@ -59,6 +59,8 @@ export class Game {
     this.renderer = createRenderer(canvas, this.quality);
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 2000);
+    this.camera.fov = this.camera.aspect < 1 ? 70 : 55;
+    this.camera.updateProjectionMatrix();
     this.world = new World(this.scene, this.quality);
     await this.world.build((p, msg) => load.set(p * 0.8, msg));
     this.creatures = new Creatures(this.world);
@@ -84,6 +86,7 @@ export class Game {
 
   resize() {
     this.camera.aspect = innerWidth / innerHeight;
+    this.camera.fov = this.camera.aspect < 1 ? 70 : 55;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(innerWidth, innerHeight);
     this.composer.setSize(innerWidth, innerHeight);
@@ -203,6 +206,7 @@ export class Game {
 
   setHudVisible(v) {
     for (const k of ['tl', 'tr', 'br']) this.hud[k].classList.toggle('hidden', !v);
+    document.body.classList.toggle('in-battle', !v);
   }
 
   toast(text) {
@@ -638,9 +642,19 @@ export class Game {
     const dir = new THREE.Vector3(c.pos.x - p.pos.x, 0, c.pos.z - p.pos.z);
     if (dir.lengthSq() < 0.01) dir.set(Math.sin(p.facing), 0, Math.cos(p.facing));
     dir.normalize();
-    this.battleDir = dir;
     const spec = CREATURES[c.species];
-    c.pos.copy(p.pos).addScaledVector(dir, 4.2 + spec.scale);
+    // prefer a flat, open spot for the creature so the fight reads well on camera
+    const T = this.world.terrain;
+    const D = 4.2 + spec.scale;
+    for (const off of [0, 0.4, -0.4, 0.8, -0.8, 1.2, -1.2, 1.7, -1.7, 2.3, -2.3, Math.PI]) {
+      const d2 = dir.clone().applyAxisAngle(_up, off);
+      const q = p.pos.clone().addScaledVector(d2, D);
+      const mid = p.pos.clone().addScaledVector(d2, D / 2);
+      if (Math.abs(T.heightAt(q.x, q.z) - p.pos.y) < 1.0 && Math.abs(T.heightAt(mid.x, mid.z) - p.pos.y) < 0.8
+        && T.heightAt(q.x, q.z) > 0.2 && !this.world.colliders.near(q.x, q.z, 1.2)) { dir.copy(d2); break; }
+    }
+    this.battleDir = dir;
+    c.pos.copy(p.pos).addScaledVector(dir, D);
     c.pos.y = this.world.terrain.heightAt(c.pos.x, c.pos.z);
     c.obj.holder.position.copy(c.pos);
     c.facing = Math.atan2(-dir.x, -dir.z);
@@ -648,7 +662,7 @@ export class Game {
     p.facing = Math.atan2(dir.x, dir.z);
     p.setAnim('Idle');
     c.obj.anim.play('idle');
-    this.frameBattle(p.pos, c.pos, dir);
+    this.frameBattle(p.pos, c.pos, dir, spec.scale);
     this.setHudVisible(false);
     sfx('encounter');
     banner(`wild ${spec.name}!`, EL[spec.el].color);
@@ -666,7 +680,7 @@ export class Game {
   }
 
   // search for a camera that shows both fighters clear of the ui and of trees
-  frameBattle(a, b, dir) {
+  frameBattle(a, b, dir, bigness = 1) {
     const t = this.world.terrain;
     const col = this.world.colliders;
     const mid = a.clone().add(b).multiplyScalar(0.5);
@@ -675,7 +689,7 @@ export class Game {
     const cam = new THREE.PerspectiveCamera(this.camera.fov, this.camera.aspect, 0.1, 500);
     const pa = a.clone().setY(a.y + 1), pb = b.clone().setY(b.y + 0.8);
     let best = null, bestScore = Infinity;
-    for (const sgn of [1, -1]) for (let ang = -0.9; ang <= 0.91; ang += 0.15) for (const dist of [7.5, 9.5, 11.5]) for (const hgt of [2.5, 3.8, 5.2]) {
+    for (const sgn of [1, -1]) for (let ang = -1.2; ang <= 1.21; ang += 0.15) for (const dist of [5.5, 7.5, 9.5, 11.5]) for (const hgt of [2.2, 3.5, 5, 7]) {
       // orbit around the midpoint, starting from the side view
       const off = side.clone().multiplyScalar(sgn).applyAxisAngle(_up, ang * sgn).multiplyScalar(dist);
       const pos = mid.clone().add(off);
@@ -693,15 +707,21 @@ export class Game {
       let score = 0;
       score += (sa.x - -0.05) ** 2 + (sb.x - 0.42) ** 2;
       score += (sa.y - 0.12) ** 2 + (sb.y - 0.18) ** 2;
-      if (Math.abs(sa.x) > 0.85 || Math.abs(sb.x) > 0.85) score += 5;
+      if (Math.abs(sa.x) > 0.8 || Math.abs(sb.x) > 0.8) score += 5;
+      if (sa.y < -0.3 || sb.y < -0.3 || sa.y > 0.75 || sb.y > 0.75) score += 5;
+      if (sa.x > sb.x - 0.2) score += 2;
       // trees or rocks between the camera and the fighters
-      for (let k = 0.15; k < 0.95; k += 0.1) {
-        const q = pos.clone().lerp(mid, k);
-        if (col.near(q.x, q.z, 1.6)) score += 1.5;
-        if (t.heightAt(q.x, q.z) > q.y - 0.3) score += 3;
+      for (const target of [pa, pb]) for (let k = 0.1; k < 0.95; k += 0.08) {
+        const q = pos.clone().lerp(target, k);
+        if (col.near(q.x, q.z, 0.9)) score += 1.2;
+        if (t.heightAt(q.x, q.z) > q.y - 0.2) score += 3;
       }
-      if (col.near(pos.x, pos.z, 3.5)) score += 2;
-      if (score < bestScore) { bestScore = score; best = { pos: pos.clone(), look: look.clone().addScaledVector(right, -dist * 0.13) }; }
+      if (col.near(pos.x, pos.z, 2.5)) score += 2;
+      // never park the camera inside a fighter
+      if (pos.distanceTo(pb) < 3.5 + bigness * 2) score += 6;
+      if (pos.distanceTo(pa) < 3) score += 6;
+      score += dist * 0.01;
+      if (score < bestScore) { bestScore = score; this.frameScore = score; best = { pos: pos.clone(), look: look.clone().addScaledVector(right, -dist * 0.13) }; }
     }
     if (!best) best = { pos: mid.clone().addScaledVector(side, 9).setY(mid.y + 5), look };
     this.player.camOverride = best;

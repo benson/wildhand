@@ -106,7 +106,7 @@ button { font-family: inherit; text-transform: lowercase; cursor: pointer; }
 }
 .hpbar { width: 150px; height: 12px; border-radius: 7px; background: rgba(0,0,0,.35); overflow: hidden; position: relative; }
 .hpbar > div { height: 100%; background: linear-gradient(90deg, #ff4d5e, #ff8a5e); border-radius: 7px; transition: width .4s; }
-.hpbar.enemy > div { background: linear-gradient(90deg, #6fdc5a, #b6f06a); }
+.hpbar.foe > div { background: linear-gradient(90deg, #6fdc5a, #b6f06a); }
 .hpbar .shield { position: absolute; top: 0; left: 0; height: 100%; background: rgba(160, 220, 255, .75); border-radius: 7px; }
 .gold { color: var(--gold); }
 .hud-tr { position: fixed; top: 14px; right: 14px; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
@@ -283,15 +283,31 @@ button { font-family: inherit; text-transform: lowercase; cursor: pointer; }
 .duelbar .sc { font-family: 'JetBrains Mono', monospace; font-weight: 700; color: var(--gold); text-align: right; }
 
 @media (max-width: 700px) {
-  .minimap { width: 110px; height: 110px; }
+  :root { --card-w: clamp(44px, 12.4vw, 80px); }
+  .minimap { width: 96px; height: 96px; }
+  .hud-tr .chip { font-size: 12px; padding: 4px 8px; }
+  .chip { font-size: 13px; padding: 5px 9px; }
+  .hpbar { width: 90px; }
+  .toasts { top: 150px; width: 90vw; }
+  .toast { text-align: center; }
+  .iconbtn { font-size: 12px; padding: 6px 9px; }
+  .iconbtn kbd { display: none; }
+  .actions { gap: 8px; }
+  .actions .btn { font-size: 15px; padding: 8px 12px; }
+  .actions .info { display: none; }
+  .battle .charms { top: 196px; }
+  .charm { width: 40px; height: 40px; font-size: 20px; border-radius: 10px; }
+  .battle .enemy .nm { font-size: 17px; }
+  .intent { font-size: 12.5px; }
   .scorebox { top: 120px; transform: none; left: auto; right: 10px; width: 150px; padding: 10px; }
   .cxm { font-size: 18px; } .cxm .c, .cxm .m { min-width: 48px; }
   .scorebox .total { font-size: 24px; min-height: 30px; }
   .charms { top: auto; bottom: calc(var(--card-h) * 2 + 120px); }
   .battle .enemy { padding: 10px; }
   .youbar, .deckcount { display: none; }
-  .hud-br { bottom: auto; top: 140px; flex-direction: column; }
-  .prompt { bottom: 170px; }
+  .hud-br { bottom: auto; right: auto; left: 14px; top: 100px; }
+  .prompt { bottom: 190px; white-space: normal; text-align: center; width: max-content; max-width: 86vw; }
+  .chat { bottom: 190px; }
 }
 @media (max-height: 760px) {
   .title { justify-content: flex-start; overflow-y: auto; padding-top: 20px; }
@@ -300,3 +316,5 @@ button { font-family: inherit; text-transform: lowercase; cursor: pointer; }
   .howto { font-size: 12.5px; }
   .credit { position: static; margin-top: 12px; }
 }
+
+body.in-battle .mobile-btns, body.in-battle .joystick { display: none; }

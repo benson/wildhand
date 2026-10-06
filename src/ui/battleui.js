@@ -175,7 +175,7 @@ export class BattleUI {
       const shieldW = Math.min(100, (e.shield / e.maxHp) * 100);
       this.el.querySelector('.enemy').innerHTML = `
         <div class="nm">${spec.name} <span class="lvl">lv ${e.level}</span> ${elBadge(e.el)}</div>
-        <div class="hpbar enemy"><div style="width:${(e.hp / e.maxHp) * 100}%"></div>${e.shield ? `<div class="shield" style="width:${shieldW}%"></div>` : ''}</div>
+        <div class="hpbar foe"><div style="width:${(e.hp / e.maxHp) * 100}%"></div>${e.shield ? `<div class="shield" style="width:${shieldW}%"></div>` : ''}</div>
         <div class="hpnum"><span>${fmt(e.hp)} / ${fmt(e.maxHp)} hp</span>${e.shield ? `<span>🛡 ${e.shield}</span>` : ''}</div>
         <div class="intent">next: <b>${e.intent.name}</b>${e.intent.dmg ? ` · ${e.intent.dmg} dmg` : ''} <span style="opacity:.7">— ${e.intent.text}</span></div>
         <div class="matchup">weak to ${elBadge(weak)} hands (×1.5 mult)</div>`;
