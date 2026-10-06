@@ -75,6 +75,8 @@ export class Game {
     try { setPortraits(await renderPortraits()); } catch (e) { console.warn('portraits failed', e); }
     this.input = new Input(canvas);
     this.player = new Player(this.world, this.camera, this.input);
+    this.input.canLock = () => this.state === 'explore';
+    this.input.canMove = () => this.state !== 'menu';
     this.remotes = new Remotes(this.scene);
     this.composer = createComposer(this.renderer, this.scene, this.camera, this.quality);
     this.battleUI = new BattleUI(this.ui, this.battleHooks());
@@ -90,7 +92,16 @@ export class Game {
     titleScreen(this.profile, (o) => this.start(o));
   }
 
+  closeChat() {
+    const inp = this.hud.chatIn;
+    if (inp.classList.contains('hidden')) return;
+    inp.classList.add('hidden'); inp.blur(); this.input.enabled = true;
+  }
+
   resize() {
+    const pr = Math.min(devicePixelRatio, this.quality.pixelRatio);
+    this.renderer.setPixelRatio(pr);
+    this.composer.setPixelRatio?.(pr);
     this.camera.aspect = innerWidth / innerHeight;
     this.camera.fov = this.camera.aspect < 1 ? 70 : 55;
     this.camera.updateProjectionMatrix();
@@ -219,7 +230,7 @@ export class Game {
       const typing = e.target.tagName === 'INPUT';
       if (e.code === 'Enter' && this.state === 'explore') {
         const inp = this.hud.chatIn;
-        if (inp.classList.contains('hidden')) { inp.classList.remove('hidden'); inp.focus(); this.input.enabled = false; e.preventDefault(); }
+        if (inp.classList.contains('hidden')) { inp.classList.remove('hidden'); inp.focus(); this.input.enabled = false; document.exitPointerLock?.(); e.preventDefault(); }
         else { this.sendChat(inp.value); inp.value = ''; inp.classList.add('hidden'); inp.blur(); this.input.enabled = true; }
         return;
       }
@@ -746,6 +757,8 @@ export class Game {
   startBattle(c) {
     if (this.state !== 'explore') return;
     this.state = 'battle';
+    document.exitPointerLock?.();
+    this.closeChat();
     if (this.player.mount) this.player.toggleMount(false);
     this.engaged = c;
     this.creatures.engagedId = c.id;
@@ -964,6 +977,8 @@ export class Game {
     this.setHudVisible(false);
     sfx('encounter');
     banner('duel!', '#c77dff');
+    document.exitPointerLock?.();
+    this.closeChat();
     this.battle = new Battle({ profile: this.profile, mode: 'duel' });
     setTimeout(() => {
       this.battleUI.open(this.battle, {

@@ -25,23 +25,38 @@ export class Input {
     addEventListener('keydown', (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
       this.keys.add(e.code);
-      if (e.code === 'Space') { this.jumpQueued = true; e.preventDefault(); }
+      if (e.code === 'Space') {
+        if (e.target.closest?.('.modal-bg, .title, .battle')) return;
+        this.jumpQueued = true; e.preventDefault();
+      }
     });
     addEventListener('keyup', (e) => this.keys.delete(e.code));
-    addEventListener('blur', () => this.keys.clear());
+    addEventListener('blur', () => { this.keys.clear(); this.dragging = false; });
 
-    dom.addEventListener('mousedown', (e) => { this.dragging = true; this.lx = e.clientX; this.ly = e.clientY; });
+    // click the world to lock the mouse; esc releases it. drag still works if lock is refused.
+    this.canLock = () => true;
+    this.canMove = () => true;
+    dom.addEventListener('mousedown', (e) => {
+      this.dragging = true; this.lx = e.clientX; this.ly = e.clientY;
+      if (e.button === 0 && this.enabled && this.canLock() && document.pointerLockElement !== dom) {
+        dom.requestPointerLock?.()?.catch?.(() => {});
+      }
+    });
     addEventListener('mouseup', () => { this.dragging = false; });
     addEventListener('mousemove', (e) => {
-      if (!this.dragging || !this.enabled) return;
-      this.yaw -= (e.clientX - this.lx) * 0.006;
-      this.pitch = THREE.MathUtils.clamp(this.pitch + (e.clientY - this.ly) * 0.004, -0.15, 1.2);
-      this.lx = e.clientX; this.ly = e.clientY;
+      if (!this.enabled) return;
+      let dx, dy;
+      if (document.pointerLockElement === dom) { dx = e.movementX * 0.6; dy = e.movementY * 0.6; }
+      else if (this.dragging) { dx = e.clientX - this.lx; dy = e.clientY - this.ly; this.lx = e.clientX; this.ly = e.clientY; }
+      else return;
+      this.yaw -= dx * 0.006;
+      this.pitch = THREE.MathUtils.clamp(this.pitch + dy * 0.004, -0.15, 1.2);
     });
     dom.addEventListener('wheel', (e) => {
+      if (e.ctrlKey) e.preventDefault();
       if (!this.enabled) return;
       this.dist = THREE.MathUtils.clamp(this.dist + e.deltaY * 0.01, 3.5, 22);
-    }, { passive: true });
+    }, { passive: false });
     dom.addEventListener('contextmenu', (e) => e.preventDefault());
 
     // touch: left half = joystick, right half = camera
@@ -81,7 +96,7 @@ export class Input {
     dom.addEventListener('touchcancel', end);
   }
   axis() {
-    if (!this.enabled) return { x: 0, y: 0, run: false };
+    if (!this.enabled || !this.canMove()) return { x: 0, y: 0, run: false };
     let x = 0, y = 0;
     const k = this.keys;
     if (k.has('KeyW') || k.has('ArrowUp')) y -= 1;
@@ -187,7 +202,7 @@ export class Player {
     if (nh > -0.9 && r < CONTINENT_R * 1.3) { this.pos.x = next.x; this.pos.z = next.z; }
 
     const ground = Math.max(terrain.heightAt(this.pos.x, this.pos.z), -0.6);
-    if (this.input.jumpQueued && this.grounded && !this.locked) {
+    if (this.input.jumpQueued && this.grounded && !this.locked && this.input.canMove()) {
       this.vy = JUMP;
       this.grounded = false;
       this.setAnim('Jump_Full_Short', { once: true, fade: 0.1, speed: 1.4 });

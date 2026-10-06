@@ -8,6 +8,7 @@ import { handBase } from '../cards/scoring.js';
 const ui = () => document.getElementById('ui');
 
 export function modal(html, { onClose = null, closable = true } = {}) {
+  document.exitPointerLock?.();
   const bg = document.createElement('div');
   bg.className = 'modal-bg';
   bg.innerHTML = `<div class="modal panel">${closable ? '<button class="btn ghost small close">close <kbd>esc</kbd></button>' : ''}${html}</div>`;
@@ -18,7 +19,11 @@ export function modal(html, { onClose = null, closable = true } = {}) {
     removeEventListener('keydown', onKey);
     onClose?.();
   };
-  const onKey = (e) => { if (e.code === 'Escape' && closable) close(); };
+  const onKey = (e) => {
+    if (e.code !== 'Escape' || !closable) return;
+    const all = document.querySelectorAll('.modal-bg');
+    if (all[all.length - 1] === bg) close();
+  };
   addEventListener('keydown', onKey);
   bg.querySelector('.close')?.addEventListener('click', close);
   bg.addEventListener('mousedown', (e) => { if (e.target === bg && closable) close(); });
@@ -141,6 +146,7 @@ export function shopScreen(profile, state, { onChange, sfx, title = 'the wanderi
   if (!state.stock) state.stock = shopStock(profile, maxRarity);
   const m = modal('<div class="shop"></div>', { onClose: onChange });
   const render = () => {
+    hideTip();
     const s = state.stock;
     const el = m.el.querySelector('.shop');
     const lv = profile.handLevels[s.tome] || 1;
@@ -279,7 +285,11 @@ export function confirmScreen(title, sub, yes = 'accept', no = 'decline') {
     const m = modal(`<h2>${title}</h2><div class="sub">${sub}</div><div class="row" style="justify-content:center;gap:14px"><button class="btn" data-y>${yes} <kbd>y</kbd></button><button class="btn ghost" data-n>${no} <kbd>n</kbd></button></div>`, { closable: false });
     let settled = false;
     const done = (v) => { if (settled) return; settled = true; removeEventListener('keydown', key); m.close(); resolve(v); };
-    const key = (e) => { if (e.code === 'KeyY') done(true); if (e.code === 'KeyN') done(false); };
+    const key = (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      if (e.code === 'KeyY') done(true);
+      if (e.code === 'KeyN') done(false);
+    };
     addEventListener('keydown', key);
     m.el.querySelector('[data-y]').onclick = () => done(true);
     m.el.querySelector('[data-n]').onclick = () => done(false);

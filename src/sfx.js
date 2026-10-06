@@ -3,6 +3,9 @@ let ctx = null;
 let muted = false;
 try { muted = localStorage.getItem('wildhand.muted') === '1'; } catch (e) { /* ignore */ }
 
+// ios keeps an audio context muted unless it is created during a user gesture
+addEventListener('pointerdown', () => ac(), { once: true });
+
 function ac() {
   if (!ctx) {
     const C = window.AudioContext || window.webkitAudioContext;
