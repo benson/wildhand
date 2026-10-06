@@ -269,7 +269,7 @@ export class World {
     this.interactables.push({ id: 'hearth', hub, pos: new THREE.Vector3(hx, y, hz), radius: 4, label: `rest at the ${zone.hubName} hearth` });
     this.interactables.push({ id: 'shop', hub, pos: stall.front, radius: 3.2, label: 'trade with the merchant' });
     this.interactables.push({ id: 'waystone', hub, pos: ws, radius: 3.4, label: `touch the ${zone.hubName} waystone` });
-    if (duel) this.interactables.push({ id: 'duel', hub, pos: duel, radius: 4.5, label: 'duel ring — challenge a nearby player' });
+    if (duel) this.interactables.push({ id: 'duel', hub, pos: duel, radius: 4.5, label: 'duel ring · stand near a player and press f' });
   }
 
   lanterns(hx, hz, y, r, count) {

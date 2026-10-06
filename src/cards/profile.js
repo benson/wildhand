@@ -51,6 +51,7 @@ export function newProfile() {
   return {
     v: 1,
     name: randomName(),
+    model: 'knight',
     color: pick(PLAYER_COLORS),
     deck: starterDeck(),
     charms: [],
@@ -81,6 +82,9 @@ export function loadProfile() {
     }
   } catch (e) { /* storage unavailable */ }
   return newProfile();
+}
+export function hasSave() {
+  try { return !!localStorage.getItem(KEY); } catch (e) { return false; }
 }
 export function saveProfile(p) {
   try { localStorage.setItem(KEY, JSON.stringify(p)); } catch (e) { /* ignore */ }

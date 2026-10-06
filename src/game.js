@@ -10,7 +10,7 @@ import { Creatures, enemyStats } from './entities/creatures.js';
 import { Remotes } from './entities/remote.js';
 import { Battle } from './cards/battle.js';
 import { CREATURES, EL } from './cards/data.js';
-import { loadProfile, saveProfile } from './cards/profile.js';
+import { loadProfile, saveProfile, hasSave, resetProfile } from './cards/profile.js';
 import { BattleUI, floatText, banner } from './ui/battleui.js';
 import { setPortraits } from './ui/cardview.js';
 import { renderPortraits } from './ui/portraits.js';
@@ -89,7 +89,7 @@ export class Game {
     this.loop();
     window.__ready = true;
     window.__game = this;
-    titleScreen(this.profile, (o) => this.start(o));
+    titleScreen(this.profile, (o) => this.start(o), { returning: hasSave(), onReset: () => { resetProfile(); location.reload(); } });
   }
 
   closeChat() {
@@ -168,8 +168,7 @@ export class Game {
     this.net = new Net();
     this.setupNet();
     this.net.connect();
-    this.toast(`welcome to the continent, ${name}`);
-    if (!p.wins) setTimeout(() => this.toast('tip: walk into a wild creature to battle it'), 2500);
+    if (!p.wins) this.toast('walk into a creature to battle it');
     setInterval(() => this.save(), 5000);
   }
 
@@ -184,7 +183,7 @@ export class Game {
     ui.insertAdjacentHTML('beforeend', `
       <div class="labels"></div>
       <div class="hud-tl">
-        <div class="chip"><span class="hud-name"></span><div class="hpbar"><div></div></div><span class="hud-hp"></span></div>
+        <div class="chip" data-tip="hp · rest at any hearth to heal · fainting costs half your gold"><span class="hud-name"></span><div class="hpbar"><div></div></div><span class="hud-hp"></span></div>
         <div class="row"><div class="chip hud-lv"><span class="lvn"></span><div class="xpbar"><div></div></div></div><div class="chip gold hud-gold"></div></div>
         <div class="row"><div class="chip hud-zone"></div></div>
       </div>
@@ -193,7 +192,7 @@ export class Game {
         <button class="iconbtn" data-b="map">map <kbd>m</kbd></button>
         <button class="iconbtn" data-b="mount">ride <kbd>r</kbd></button>
         <button class="iconbtn" data-b="deck">deck <kbd>tab</kbd></button>
-        <button class="iconbtn" data-b="mute">${isMuted() ? 'sound off' : 'sound on'} <kbd>n</kbd></button>
+        <button class="iconbtn" data-b="mute" aria-label="sound">${isMuted() ? '🔇' : '🔊'} <kbd>n</kbd></button>
         <button class="iconbtn" data-b="help">help <kbd>h</kbd></button>
       </div>
       <div class="prompt hidden"></div>
@@ -219,7 +218,7 @@ export class Game {
       br: ui.querySelector('.hud-br'),
     };
     ui.querySelector('[data-b=deck]').onclick = () => this.openDeck();
-    ui.querySelector('[data-b=mute]').onclick = (e) => { e.currentTarget.innerHTML = `${toggleMute() ? 'sound off' : 'sound on'} <kbd>n</kbd>`; };
+    ui.querySelector('[data-b=mute]').onclick = (e) => { e.currentTarget.innerHTML = `${toggleMute() ? '🔇' : '🔊'} <kbd>n</kbd>`; };
     ui.querySelector('[data-b=map]').onclick = () => this.openMap();
     ui.querySelector('[data-b=mount]').onclick = () => this.toggleMount();
     ui.querySelector('[data-b=help]').onclick = () => this.openHelp();
@@ -355,6 +354,7 @@ export class Game {
       hubs: this.world.hubs,
       zones: ZONES,
       discovered: this.profile.discovered.filter((id) => zoneOpen(this.profile, ZONES.indexOf(ZONE_BY_ID[id]))),
+      sealed: new Set(ZONES.filter((z, i) => !zoneOpen(this.profile, i)).map((z) => z.id)),
       player: this.player.pos,
       facing: this.player.facing,
       others: [...this.remotes.map.values()].map((r) => ({ x: r.pos.x, z: r.pos.z, c: r.state.c, n: r.state.n })),
@@ -385,15 +385,18 @@ export class Game {
     const pos = this.player.pos;
     const { hub, dist } = this.nearestHub(pos);
     const zone = ZONES[this.world.zoneIdx];
-    this.hud.zone.textContent = dist < 40 ? `${hub.zone.hubName} · safe` : `${zone.name} · lv ${zone.levels[0]}–${zone.levels[1]}`;
+    const safe = dist < 50;
+    this.hud.zone.textContent = safe ? `${hub.zone.hubName} · safe` : `${zone.name} · lv ${zone.levels[0]}–${zone.levels[1]}`;
+    this.hud.zone.dataset.tip = safe ? 'creatures leave you alone in town' : 'creature levels in this zone';
     this.hud.lvn.textContent = `lv ${p.level}`;
+    this.hud.lvn.parentElement.dataset.tip = p.level >= MAX_LEVEL ? 'max level' : `${p.xp} / ${xpToNext(p.level)} xp to lv ${p.level + 1} · levels raise max hp and add charm slots`;
     this.hud.xp.style.width = p.level >= MAX_LEVEL ? '100%' : `${(p.xp / xpToNext(p.level)) * 100}%`;
     if (this.lastZone !== zone.id) {
       if (this.lastZone) this.zoneBanner(zone);
       this.lastZone = zone.id;
     }
     const n = this.net?.count || 0;
-    this.hud.online.textContent = `${n + 1} on the isle`;
+    this.hud.online.textContent = `${n + 1} online`;
   }
 
   updatePrompt() {
@@ -432,7 +435,7 @@ export class Game {
     if (it.id === 'hearth') {
       const p = this.profile;
       if (p.hp < p.maxHp) { p.hp = p.maxHp; sfx('heal'); this.toast('the hearth restores you to full hp'); }
-      else this.toast('you feel rested. progress is saved.');
+      else this.toast('already at full hp');
       this.player.setAnim('Interact', { once: true, then: () => this.player.setAnim('Idle') });
       this.save();
     } else if (it.id === 'shop') {
@@ -495,12 +498,11 @@ export class Game {
     this.state = 'menu';
     modal(`<h2>how to play</h2>
       <div class="howto" style="font-size:16px;opacity:1">
-      <p><b>explore.</b> wasd to move, shift to run, space to jump, drag to look, scroll to zoom. on touch: left thumb moves, right thumb looks.</p>
-      <p><b>battle.</b> walk into a wild creature. pick up to 5 cards and play a poker hand: pair, two pair, three of a kind, straight, flush (5 of one element), full house, four of a kind, straight flush, five of a kind. each hand has base <span style="color:#7fbfff">chips</span> × <span style="color:#ff8a95">mult</span>; scored cards add their rank in chips. the result is your damage.</p>
-      <p><b>elements.</b> tide › ember › grove › volt › tide. if most of your scoring cards beat the enemy's element, ×1.5 mult. if they're weak to it, ×0.75.</p>
-      <p><b>grow.</b> win to earn gold and pick a reward: bind the creature as a card (with its own ability), take an enhanced card, or a charm. charms are passive combo engines — the merchant in hearthtown sells more, plus tomes that level up hand types.</p>
-      <p><b>danger.</b> creatures attack after each of your hands — watch their intent. creatures get stronger the farther you go from town. rest at the hearth to heal. if you faint, you lose half your gold.</p>
-      <p><b>duel.</b> walk up to another player and press f. both play 4 hands from your own decks; highest total score wins.</p>
+      <p><b>move.</b> wasd, shift to run, space to jump, click to look (esc frees the mouse), scroll to zoom, r to ride, m for the map, enter to chat. on touch: left thumb moves, right thumb looks.</p>
+      <p><b>battle.</b> walk into a creature. play up to 5 cards as a poker hand (a flush is 5 of one element). damage = <span style="color:#7fbfff">chips</span> × <span style="color:#ff8a95">mult</span>. the creature hits back after each hand. hover anything in battle for details.</p>
+      <p><b>grow.</b> wins give gold, xp and a reward card or charm. merchants at every outpost sell charms, packs, tomes (level up a hand type) and cleanses (remove a card).</p>
+      <p><b>travel.</b> each zone is sealed until you beat the previous zone's boss (☠). touch waystones to fast-travel between them. hearths heal you. fainting costs half your gold.</p>
+      <p><b>duel.</b> press f near another player. 4 hands each, highest total wins.</p>
       </div>`, { onClose: () => { this.state = 'explore'; } });
   }
 
@@ -565,7 +567,7 @@ export class Game {
     net.on('st', (s, pid) => this.remotes.upsert(pid, s));
     net.on('leave', (pid) => {
       const r = this.remotes.map.get(pid);
-      if (r) this.toast(`${r.state.n} left the isle`);
+      if (r) this.toast(`${r.state.n} left`);
       this.remotes.remove(pid);
       if (this.duel && this.duel.opp === pid) this.finishDuel(true);
     });
@@ -899,16 +901,16 @@ export class Game {
     this.net?.send('kill', { id: c.id, until });
     const enemy = { ...b.enemy };
     const xp = xpFor(c.level, CREATURES[c.species].tier, !!c.boss);
+    const hpBefore = this.profile.maxHp, slotsBefore = this.profile.maxCharms;
     const gained = grantXp(this.profile, xp);
     this.endBattleCommon();
     this.state = 'menu';
     this.player.setAnim('Cheer', { once: true, then: () => this.player.setAnim('Idle') });
     banner(c.boss ? `${c.boss} falls!` : 'victory!', '#ffcf5a');
-    if (gained) setTimeout(() => { sfx('win'); banner(`level ${this.profile.level}!`, '#8fd8ff'); this.toast(`max hp ${this.profile.maxHp} · charm slots ${this.profile.maxCharms}`); }, 1200);
+    if (gained) setTimeout(() => { sfx('win'); banner(`level ${this.profile.level}!`, '#8fd8ff'); this.toast(`+${this.profile.maxHp - hpBefore} max hp${this.profile.maxCharms > slotsBefore ? ' · +1 charm slot' : ''}`); }, 1200);
     setTimeout(() => {
       rewardScreen(this.profile, enemy, gold, xp, (o) => {
         if (o?.kind === 'card' && o.card.creature) this.toast(`${CREATURES[o.card.creature].name} joins your deck`);
-        else if (o?.kind === 'charm') this.toast('charm equipped');
         this.state = 'explore';
         this.save();
       });
@@ -1052,11 +1054,12 @@ export class Game {
     } else if (me === them) {
       banner('a draw', '#fbf3e4');
       this.profile.gold += 3;
+      this.toast('+3 gold');
     } else {
       sfx('lose');
       banner('duel lost', '#ff8a95');
       this.profile.gold += 2;
-      this.toast(`${me.toLocaleString()} vs ${them.toLocaleString()} · +2 gold for trying`);
+      this.toast(`${me.toLocaleString()} vs ${them.toLocaleString()} · +2 gold`);
     }
     this.save();
   }

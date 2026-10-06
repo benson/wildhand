@@ -51,7 +51,6 @@ button { font-family: inherit; text-transform: lowercase; cursor: pointer; touch
 }
 .logo .w { color: var(--gold); }
 @keyframes bob { 50% { transform: rotate(-2deg) translateY(-6px); } }
-.tagline { margin: 18px 0 26px; font-size: clamp(15px, 2vw, 20px); opacity: 0.92; text-shadow: 0 2px 8px rgba(0,0,0,.5); }
 .panel {
   background: rgba(27, 20, 48, 0.82);
   backdrop-filter: blur(10px);
@@ -61,7 +60,7 @@ button { font-family: inherit; text-transform: lowercase; cursor: pointer; touch
   box-shadow: var(--shadow);
   padding: 18px;
 }
-.title .panel { width: min(520px, 100%); }
+.title .panel { width: min(520px, 100%); margin-top: 26px; }
 .row { display: flex; gap: 10px; align-items: center; }
 .field {
   flex: 1; background: rgba(255,255,255,.08); border: 2px solid rgba(255,255,255,.18); color: var(--paper);
@@ -99,6 +98,9 @@ button { font-family: inherit; text-transform: lowercase; cursor: pointer; touch
 
 /* ---------- hud ---------- */
 .hud-tl { position: fixed; top: 14px; left: 14px; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.hud-tl .chip { pointer-events: auto; }
+[data-tip] { cursor: help; }
+button[data-tip] { cursor: pointer; }
 .chip {
   display: inline-flex; align-items: center; gap: 8px; background: rgba(27, 20, 48, 0.72); backdrop-filter: blur(6px);
   border-radius: 12px; padding: 6px 12px; font-weight: 600; font-size: 15px; box-shadow: 0 4px 14px rgba(0,0,0,.2);
@@ -117,7 +119,7 @@ button { font-family: inherit; text-transform: lowercase; cursor: pointer; touch
   padding: 8px 12px; font-size: 14px; font-weight: 600; backdrop-filter: blur(6px);
 }
 .iconbtn:hover { border-color: var(--gold); }
-.iconbtn kbd { font-family: 'JetBrains Mono', monospace; font-size: 11px; opacity: .6; margin-left: 4px; }
+.iconbtn kbd, .actions kbd { font-family: 'JetBrains Mono', monospace; font-size: 11px; opacity: .6; margin-left: 4px; }
 .prompt {
   pointer-events: none; position: fixed; left: 50%; bottom: 120px; transform: translateX(-50%); background: rgba(27, 20, 48, 0.85);
   padding: 10px 18px; border-radius: 14px; font-weight: 600; font-size: 16px; box-shadow: var(--shadow); white-space: nowrap;
@@ -229,8 +231,8 @@ button { font-family: inherit; text-transform: lowercase; cursor: pointer; touch
 .scorebox .hand .lv { font-size: 12px; opacity: .7; }
 .cxm { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 10px 0; font-weight: 700; font-size: 26px; font-family: 'JetBrains Mono', monospace; }
 .cxm .c, .cxm .m { min-width: 74px; padding: 6px 8px; border-radius: 10px; transition: transform .1s; }
-.cxm .c { background: var(--chips); box-shadow: 0 4px 0 #1b5bb3; }
-.cxm .m { background: var(--mult); box-shadow: 0 4px 0 #b3283a; }
+.cxm .c { background: var(--chips); }
+.cxm .m { background: var(--mult); }
 .cxm .bump { transform: scale(1.18); }
 .scorebox .total { font-family: 'JetBrains Mono', monospace; font-size: 34px; font-weight: 700; color: var(--gold); min-height: 42px; text-shadow: 0 3px 0 rgba(0,0,0,.3); }
 .scorebox .meta { font-size: 13px; opacity: .75; margin-top: 6px; }
@@ -291,7 +293,7 @@ button { font-family: inherit; text-transform: lowercase; cursor: pointer; touch
   .toasts { top: 150px; width: 90vw; }
   .toast { text-align: center; }
   .iconbtn { font-size: 12px; padding: 6px 9px; }
-  .iconbtn kbd { display: none; }
+  .iconbtn kbd, .actions kbd { display: none; }
   .actions { gap: 8px; }
   .actions .btn { font-size: 15px; padding: 8px 12px; }
   .actions .info { display: none; }
@@ -312,7 +314,6 @@ button { font-family: inherit; text-transform: lowercase; cursor: pointer; touch
 @media (max-height: 760px) {
   .title { justify-content: flex-start; overflow-y: auto; padding-top: 20px; }
   .logo { font-size: clamp(44px, 9vh, 90px); }
-  .tagline { margin: 10px 0 14px; }
   .howto { font-size: 12.5px; }
   .credit { position: static; margin-top: 12px; }
 }

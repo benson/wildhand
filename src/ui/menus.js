@@ -33,25 +33,25 @@ export function modal(html, { onClose = null, closable = true } = {}) {
 const CLASS_ICON = { knight: '🛡️', barbarian: '🪓', mage: '🔮', rogue: '🗡️', rogue_hooded: '🏹' };
 const CLASS_NAME = { knight: 'knight', barbarian: 'barbarian', mage: 'mage', rogue: 'rogue', rogue_hooded: 'ranger' };
 
-export function titleScreen(profile, onPlay) {
+export function titleScreen(profile, onPlay, { returning = false, onReset } = {}) {
   const el = document.createElement('div');
   el.className = 'title';
   el.innerHTML = `
     <div class="logo">wild<span class="w">hand</span></div>
-    <div class="tagline">roam the isle · play the hand · bind the wild</div>
     <div class="panel">
-      <div class="row"><input class="field" maxlength="16" value="${profile.name}" aria-label="name"><button class="btn ghost small" data-r>🎲</button></div>
-      <div class="classes">${CHAR_MODELS.map((m) => `<button data-m="${m}" class="${profile.model === m ? 'on' : ''}"><span class="ico">${CLASS_ICON[m]}</span>${CLASS_NAME[m]}</button>`).join('')}</div>
-      <div class="colors">${PLAYER_COLORS.map((c) => `<button data-c="${c}" style="background:${c}" class="${profile.color === c ? 'on' : ''}" aria-label="color"></button>`).join('')}</div>
-      <button class="btn" data-play style="width:100%">enter the isle</button>
-      <div class="howto">
-        <b>wasd</b> move · <b>shift</b> run · <b>space</b> jump · <b>drag</b> look · <b>e</b> interact<br>
-        walk into wild creatures to battle. play poker hands — <b>chips × mult</b> = damage.<br>
-        match elements: <b>tide › ember › grove › volt › tide</b>. bind creatures into your deck.<br>
-        find other players and press <b>f</b> to duel.
+      ${returning
+        ? `<button class="btn" data-play style="width:100%">continue as <span style="color:${profile.color}">${profile.name}</span> · lv ${profile.level || 1}</button>
+           <div class="row" style="justify-content:center;gap:10px;margin-top:10px"><button class="btn ghost small" data-look>change look</button><button class="btn ghost small" data-new>new character</button></div>`
+        : '<h3 style="margin:0 0 12px">new character</h3>'}
+      <div class="editor ${returning ? 'hidden' : ''}">
+        <div class="row" style="margin-top:${returning ? 14 : 0}px"><input class="field" maxlength="16" value="${profile.name}" aria-label="name"><button class="btn ghost small" data-r title="random name">🎲</button></div>
+        <div class="classes">${CHAR_MODELS.map((m) => `<button data-m="${m}" class="${profile.model === m ? 'on' : ''}"><span class="ico">${CLASS_ICON[m]}</span>${CLASS_NAME[m]}</button>`).join('')}</div>
+        <div class="colors">${PLAYER_COLORS.map((c) => `<button data-c="${c}" style="background:${c}" class="${profile.color === c ? 'on' : ''}" aria-label="color"></button>`).join('')}</div>
+        ${returning ? '' : '<button class="btn" data-play style="width:100%">start</button>'}
       </div>
+      <div class="howto"><b>wasd</b> move · <b>shift</b> run · <b>space</b> jump · <b>click</b> look · <b>e</b> interact · <b>h</b> how to play</div>
     </div>
-    <div class="credit">models: <a href="https://kenney.nl" target="_blank" rel="noopener">kenney</a> & <a href="https://kaylousberg.com" target="_blank" rel="noopener">kaykit</a> (cc0) · p2p multiplayer, no accounts</div>`;
+    <div class="credit">progress saves in this browser · no account needed · models: <a href="https://kenney.nl" target="_blank" rel="noopener">kenney</a> & <a href="https://kaylousberg.com" target="_blank" rel="noopener">kaykit</a> (cc0)</div>`;
   ui().appendChild(el);
   let model = profile.model || 'knight';
   let color = profile.color;
@@ -68,6 +68,14 @@ export function titleScreen(profile, onPlay) {
     const { randomName } = await import('../cards/profile.js');
     input.value = randomName();
   };
+  el.querySelector('[data-look]')?.addEventListener('click', (e) => {
+    el.querySelector('.editor').classList.remove('hidden');
+    e.currentTarget.remove();
+  });
+  el.querySelector('[data-new]')?.addEventListener('click', async () => {
+    const ok = await confirmScreen('start over?', `this erases ${profile.name} (lv ${profile.level || 1}) from this browser.`, 'erase', 'keep');
+    if (ok) onReset?.();
+  });
   const go = () => {
     const name = input.value.trim().toLowerCase().replace(/[^a-z0-9 _-]/g, '').slice(0, 16) || profile.name;
     el.remove();
@@ -106,8 +114,8 @@ export function rewardScreen(profile, enemy, gold, xp, onDone, rng = Math.random
     options.push({ kind: 'card', card: e2, label: `${e2.enh} ${e2.rank} of ${e2.el}`, desc: ENHANCE[e2.enh].text });
   }
   const m = modal(`
-    <h2>victory!</h2>
-    <div class="sub">${enemy.boss || spec.name} lv ${enemy.level} defeated · <span class="gold">+${gold} gold</span> · <span style="color:#8fd8ff">+${xp} xp</span> · pick one to add</div>
+    <h2>rewards</h2>
+    <div class="sub"><span class="gold">+${gold} gold</span> · <span style="color:#8fd8ff">+${xp} xp</span></div>
     <div class="choices"></div>
     <div style="text-align:center"><button class="btn ghost small" data-skip>skip</button></div>`, { closable: false });
   const box = m.el.querySelector('.choices');
@@ -155,13 +163,13 @@ export function shopScreen(profile, state, { onChange, sfx, title = 'the wanderi
     const nb = handBase(s.tome, lv + 1);
     el.innerHTML = `
       <h2>${title}</h2>
-      <div class="sub">“cards, charms, curiosities.” · you have <span class="gold">${profile.gold} gold</span> · charms ${profile.charms.length}/${profile.maxCharms}</div>
+      <div class="sub"><span class="gold">${profile.gold} gold</span> · charms ${profile.charms.length}/${profile.maxCharms}</div>
       <h3>charms</h3><div class="choices charms-sale"></div>
       <h3>packs & services</h3>
       <div class="choices services">
         <div class="choice"><div class="charm" style="width:86px;height:86px;font-size:40px">🎴</div><b>elemental pack</b><div class="desc">choose 1 of 3 enhanced cards</div><button class="btn small" data-buy="pack" ${s.packs <= 0 ? 'disabled' : ''}>${price(4)} gold${s.packs <= 0 ? ' · sold out' : ''}</button></div>
         <div class="choice"><div class="charm" style="width:86px;height:86px;font-size:40px">📜</div><b>tome of ${HANDS[s.tome].name}</b><div class="desc">level up to ${lv + 1}: ${nb.chips} chips × ${nb.mult} mult</div><button class="btn small" data-buy="tome">${tomePrice()} gold</button></div>
-        <div class="choice"><div class="charm" style="width:86px;height:86px;font-size:40px">🕯️</div><b>cleanse</b><div class="desc">remove a card from your deck (${profile.deck.length})</div><button class="btn small" data-buy="cleanse" ${s.cleanses <= 0 ? 'disabled' : ''}>${cleansePrice()} gold${s.cleanses <= 0 ? ' · sold out' : ''}</button></div>
+        <div class="choice"><div class="charm" style="width:86px;height:86px;font-size:40px">🕯️</div><b>cleanse</b><div class="desc">remove a card from your deck (${profile.deck.length})</div><button class="btn small" data-buy="cleanse" ${s.cleanses <= 0 || profile.deck.length <= 20 ? 'disabled' : ''}>${profile.deck.length <= 20 ? '20 cards minimum' : `${cleansePrice()} gold${s.cleanses <= 0 ? ' · sold out' : ''}`}</button></div>
         <div class="choice"><div class="charm" style="width:86px;height:86px;font-size:40px">🔁</div><b>reroll charms</b><div class="desc">new stock</div><button class="btn small" data-buy="reroll">${price(2)} gold</button></div>
       </div>`;
     const cs = el.querySelector('.charms-sale');
@@ -173,7 +181,7 @@ export function shopScreen(profile, state, { onChange, sfx, title = 'the wanderi
       vis.style.width = '86px'; vis.style.height = '86px'; vis.style.fontSize = '40px';
       const full = profile.charms.length >= profile.maxCharms;
       c.append(vis);
-      c.insertAdjacentHTML('beforeend', `<b>${CHARMS[k].name}</b><div class="desc">${CHARMS[k].text}</div><button class="btn small" ${full ? 'disabled' : ''}>${full ? 'charms full' : `${price(CHARMS[k].cost)} gold`}</button>`);
+      c.insertAdjacentHTML('beforeend', `<b>${CHARMS[k].name}</b><div class="desc">${CHARMS[k].text}</div><button class="btn small" ${full ? 'disabled' : ''}>${full ? 'full · sell one in your deck' : `${price(CHARMS[k].cost)} gold`}</button>`);
       c.querySelector('button').onclick = () => {
         if (!buy(price(CHARMS[k].cost))) return;
         profile.charms.push(k);
@@ -213,7 +221,7 @@ export function shopScreen(profile, state, { onChange, sfx, title = 'the wanderi
       render();
     } else if (kind === 'cleanse') {
       if (s.cleanses <= 0) return;
-      if (profile.deck.length <= 20) { flash('your deck is already lean (20 cards min)'); return; }
+      if (profile.deck.length <= 20) return;
       if (profile.gold < cleansePrice()) { flash('not enough gold'); return; }
       pickCard('cleanse', 'choose a card to remove', profile.deck, (c) => {
         if (!buy(cleansePrice())) return;
@@ -251,14 +259,14 @@ export function deckScreen(profile, { onChange, sfx } = {}) {
     const deck = profile.deck.slice().sort((a, b) => order[a.el] - order[b.el] || b.rank - a.rank);
     el.innerHTML = `
       <h2>${profile.name}'s deck</h2>
-      <div class="sub">${deck.length} cards · ${deck.filter((c) => c.creature).length} bound creatures · <span class="gold">${profile.gold} gold</span> · ${profile.wins} wins · ${profile.duelWins} duel wins</div>
-      <h3>charms (${profile.charms.length}/${profile.maxCharms}) — click to sell for half</h3><div class="row charmrow" style="flex-wrap:wrap"></div>
+      <div class="sub">${deck.length} cards · ${deck.filter((c) => c.creature).length} bound</div>
+      <h3>charms ${profile.charms.length}/${profile.maxCharms}</h3><div class="row charmrow" style="flex-wrap:wrap"></div>
       <h3>cards</h3><div class="grid cards"></div>
-      <h3>hand levels</h3><div class="levels"></div>`;
+      <h3 data-tip="each hand type's base chips × mult. tomes from merchants level them up.">hand levels</h3><div class="levels"></div>`;
     const cr = el.querySelector('.charmrow');
-    if (!profile.charms.length) cr.innerHTML = '<span style="opacity:.6">none yet — win battles or visit the merchant</span>';
+    if (!profile.charms.length) cr.innerHTML = '<span style="opacity:.6">none yet</span>';
     profile.charms.forEach((k, i) => {
-      const c = charmEl(k);
+      const c = charmEl(k, { note: `<span class="r">click to sell for ${Math.floor(CHARMS[k].cost / 2)} gold</span>` });
       c.style.cursor = 'pointer';
       c.onclick = async () => {
         hideTip();
@@ -305,9 +313,9 @@ export function confirmScreen(title, sub, yes = 'accept', no = 'decline') {
 export { makeCard };
 
 // full continent map; when opened from a waystone, discovered outposts are travel targets
-export function worldMapScreen({ base, hubs, zones, discovered, player, facing, others, level, travelFrom, onTravel, onClose }) {
+export function worldMapScreen({ base, hubs, zones, discovered, sealed = new Set(), player, facing, others, level, travelFrom, onTravel, onClose }) {
   const m = modal(`<h2>${travelFrom ? `${travelFrom.zone.hubName} waystone` : 'the continent'}</h2>
-    <div class="sub">${travelFrom ? 'choose an attuned waystone to travel to. touch new waystones to attune them.' : 'zones, outposts and waystones. attuned waystones glow blue.'}</div>
+    <div class="sub">${travelFrom ? 'pick a blue waystone to travel to' : 'blue waystones are attuned · touch a yellow one to attune it'}</div>
     <div class="worldmap"><canvas width="900" height="900"></canvas></div>`, { onClose });
   const cv = m.el.querySelector('canvas');
   const g = cv.getContext('2d');
@@ -326,8 +334,9 @@ export function worldMapScreen({ base, hubs, zones, discovered, player, facing, 
       g.lineWidth = 5; g.strokeStyle = 'rgba(27,20,48,.75)'; g.fillStyle = '#fbf3e4';
       g.strokeText(z.name, x, y); g.fillText(z.name, x, y);
       g.font = '500 15px Fredoka, sans-serif';
-      g.fillStyle = lvlOk ? '#ffcf5a' : '#ff8a95';
-      g.strokeText(`lv ${z.levels[0]}–${z.levels[1]}`, x, y + 20); g.fillText(`lv ${z.levels[0]}–${z.levels[1]}`, x, y + 20);
+      const sub = sealed.has(z.id) ? 'sealed' : `lv ${z.levels[0]}–${z.levels[1]}`;
+      g.fillStyle = sealed.has(z.id) || !lvlOk ? '#ff8a95' : '#ffcf5a';
+      g.strokeText(sub, x, y + 20); g.fillText(sub, x, y + 20);
     }
     targets.length = 0;
     for (const h of hubs) {

@@ -50,18 +50,16 @@ export class BattleUI {
         <div class="hand">select cards</div>
         <div class="cxm"><div class="c">0</div><span>×</span><div class="m">0</div></div>
         <div class="total"></div>
-        <div class="meta"></div>
       </div>
       <div class="youbar panel"><div class="row" style="justify-content:space-between"><b>${opts.name || 'you'}</b><span class="hpn"></span></div><div class="hpbar"><div></div></div></div>
-      <div class="deckcount panel"></div>
+      <div class="deckcount panel" data-tip="cards left to draw · cards already played or discarded"></div>
       <div class="handwrap">
         <div class="table"></div>
         <div class="actions">
-          <button class="btn red small" data-act="discard">discard</button>
+          <button class="btn red small" data-act="discard" data-tip="swap the selected cards for new ones">discard</button>
           <button class="btn ghost small" data-act="sort">sort: rank</button>
-          <div class="info"></div>
-          <button class="btn blue" data-act="play">play hand</button>
-          ${battle.mode === 'pve' ? '<button class="btn ghost small" data-act="flee">flee</button>' : ''}
+          <button class="btn blue" data-act="play">play hand <kbd>enter</kbd></button>
+          ${battle.mode === 'pve' ? '<button class="btn ghost small" data-act="flee" data-tip="escape, taking half the next hit">flee</button>' : ''}
         </div>
         <div class="hand-row"></div>
       </div>`;
@@ -147,22 +145,21 @@ export class BattleUI {
     const pv = this.selected.length ? this.battle.preview(this.selected) : null;
     const lv = (t) => this.battle.profile.handLevels?.[t] || 1;
     if (!pv) {
-      box.querySelector('.hand').innerHTML = 'select cards';
+      box.querySelector('.hand').innerHTML = `select up to ${this.battle.maxPlay} cards`;
       box.querySelector('.c').textContent = '0';
       box.querySelector('.m').textContent = '0';
       box.querySelector('.total').textContent = '';
     } else {
-      box.querySelector('.hand').innerHTML = `${HANDS[pv.type].name} <span class="lv">lv ${lv(pv.type)}</span>`;
+      const mu = pv.matchup > 1 ? ' <span class="lv" style="color:#80ed99">strong ×1.5</span>' : pv.matchup < 1 ? ' <span class="lv" style="color:#ff8a95">weak ×0.75</span>' : '';
+      box.querySelector('.hand').innerHTML = `${HANDS[pv.type].name} <span class="lv" data-tip="hand level ${lv(pv.type)}: ${pv.base.chips} chips × ${pv.base.mult} mult base. raise it with tomes from merchants.">lv ${lv(pv.type)}</span>${mu}`;
       box.querySelector('.c').textContent = fmt(pv.base.chips);
       box.querySelector('.m').textContent = fmt(pv.base.mult);
       box.querySelector('.total').textContent = '';
     }
     const b = this.battle;
-    const info = this.el.querySelector('.info');
-    info.innerHTML = `${this.selected.length}/${b.maxPlay} selected`;
     this.el.querySelector('[data-act=play]').disabled = !this.selected.length || this.busy;
     this.el.querySelector('[data-act=discard]').disabled = !this.selected.length || b.discards <= 0 || this.busy;
-    this.el.querySelector('[data-act=discard]').textContent = `discard (${b.discards})`;
+    this.el.querySelector('[data-act=discard]').innerHTML = `discard (${b.discards}) <kbd>x</kbd>`;
   }
 
   refresh() {
@@ -176,22 +173,23 @@ export class BattleUI {
       this.el.querySelector('.enemy').innerHTML = `
         <div class="nm">${e.boss ? `☠ ${e.boss}` : spec.name} <span class="lvl">lv ${e.level}</span> ${elBadge(e.el)}</div>
         <div class="hpbar foe"><div style="width:${(e.hp / e.maxHp) * 100}%"></div>${e.shield ? `<div class="shield" style="width:${shieldW}%"></div>` : ''}</div>
-        <div class="hpnum"><span>${fmt(e.hp)} / ${fmt(e.maxHp)} hp</span>${e.shield ? `<span>🛡 ${e.shield}</span>` : ''}</div>
-        <div class="intent">next: <b>${e.intent.name}</b>${e.intent.dmg ? ` · ${e.intent.dmg} dmg` : ''} <span style="opacity:.7">— ${e.intent.text}</span></div>
-        <div class="matchup">weak to ${elBadge(weak)} hands (×1.5 mult)</div>`;
+        <div class="hpnum"><span>${fmt(e.hp)} / ${fmt(e.maxHp)} hp</span>${e.shield ? `<span data-tip="shield · absorbs damage before hp">🛡 ${e.shield}</span>` : ''}</div>
+        <div class="intent" data-tip="what it does after your next hand: ${e.intent.text}">next: <b>${e.intent.name}</b>${e.intent.dmg ? ` · ${e.intent.dmg} dmg` : ''}</div>
+        <div class="matchup" data-tip="a hand's element is the most common one among its scoring cards (ties: none). tide › ember › grove › volt › tide. strong ×1.5 mult, weak ×0.75.">weak to ${elBadge(weak)} hands</div>`;
+      const flee = this.el.querySelector('[data-act=flee]');
+      if (flee) flee.textContent = e.intent.dmg ? `flee (−${Math.ceil(e.intent.dmg / 2)} hp)` : 'flee';
     } else {
       const o = this.opts.opponent || { name: 'opponent', total: 0, handsLeft: 4 };
       this.el.querySelector('.duelbar').innerHTML = `
-        <div style="font-weight:700;font-size:20px;margin-bottom:6px">duel · highest score wins</div>
+        <div style="font-weight:700;font-size:20px;margin-bottom:6px">duel</div>
         <div class="vs">
           <span>${this.opts.name || 'you'} <span style="opacity:.6">(${b.handsLeft} hands left)</span></span><span class="sc">${fmt(b.total)}</span>
           <span>${o.name} <span style="opacity:.6">(${o.handsLeft} hands left)</span></span><span class="sc">${fmt(o.total)}</span>
         </div>`;
     }
     this.el.querySelector('.youbar .hpbar > div').style.width = `${(p.hp / p.maxHp) * 100}%`;
-    this.el.querySelector('.youbar .hpn').textContent = `${p.hp}/${p.maxHp} hp${b.burn ? ' · 🔥burn' : ''}`;
-    this.el.querySelector('.deckcount').innerHTML = `deck ${b.drawPile.length} · discard ${b.discardPile.length}<br><span class="gold">${p.gold} gold</span>`;
-    this.el.querySelector('.scorebox .meta').textContent = b.mode === 'duel' ? `${b.handsLeft} hands left` : `turn ${b.turn + 1}`;
+    this.el.querySelector('.youbar .hpn').innerHTML = `${p.hp}/${p.maxHp} hp${b.burn ? ` · <span data-tip="burning · +2 damage on each of the next ${b.burn} enemy hits">🔥 ${b.burn}</span>` : ''}`;
+    this.el.querySelector('.deckcount').textContent = `deck ${b.drawPile.length} · used ${b.discardPile.length}`;
     this.renderHand();
     this.renderPreview();
   }

@@ -60,15 +60,15 @@ export function cardTip(card) {
   return parts.join('<br>');
 }
 
-export function charmEl(key, { idx = null } = {}) {
+export function charmEl(key, { idx = null, note = '' } = {}) {
   const d = document.createElement('div');
-  if (!key) { d.className = 'charm empty'; return d; }
+  if (!key) { d.className = 'charm empty'; d.dataset.tip = 'empty charm slot · win charms in battle or buy them from merchants'; return d; }
   const c = CHARMS[key];
   d.className = `charm r${c.rarity}`;
   d.dataset.key = key;
   if (idx !== null) d.dataset.idx = idx;
   d.textContent = c.icon;
-  attachTip(d, () => charmTip(key));
+  attachTip(d, () => charmTip(key) + (note ? `<br>${note}` : ''));
   return d;
 }
 export function charmTip(key) {
@@ -78,25 +78,45 @@ export function charmTip(key) {
 }
 
 let tipEl = null;
+let tipTimer = 0;
+function showTip(html, e) {
+  if (!tipEl) { tipEl = document.createElement('div'); tipEl.className = 'tip'; document.body.appendChild(tipEl); }
+  clearTimeout(tipTimer);
+  tipEl.innerHTML = html;
+  tipEl.classList.remove('hidden');
+  moveTip(e);
+}
+function moveTip(e) {
+  if (!tipEl) return;
+  const x = Math.min(e.clientX + 14, innerWidth - 250);
+  const y = Math.max(10, e.clientY - tipEl.offsetHeight - 14);
+  tipEl.style.left = `${x}px`;
+  tipEl.style.top = `${y}px`;
+}
 export function attachTip(el, html) {
-  const show = (e) => {
-    if (!tipEl) { tipEl = document.createElement('div'); tipEl.className = 'tip'; document.body.appendChild(tipEl); }
-    tipEl.innerHTML = html();
-    tipEl.classList.remove('hidden');
-    move(e);
-  };
-  const move = (e) => {
-    if (!tipEl) return;
-    const x = Math.min(e.clientX + 14, innerWidth - 250);
-    const y = Math.max(10, e.clientY - tipEl.offsetHeight - 14);
-    tipEl.style.left = `${x}px`;
-    tipEl.style.top = `${y}px`;
-  };
-  el.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') show(e); });
-  el.addEventListener('pointermove', move);
+  el.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') showTip(html(), e); });
+  el.addEventListener('pointermove', moveTip);
   el.addEventListener('pointerleave', hideTip);
 }
 export function hideTip() { tipEl?.classList.add('hidden'); }
+
+// any element with data-tip explains itself: hover with a mouse, tap on touch
+let tipFrom = null;
+addEventListener('pointerover', (e) => {
+  if (e.pointerType !== 'mouse') return;
+  const t = e.target.closest?.('[data-tip]') || null;
+  if (t === tipFrom) return;
+  tipFrom = t;
+  if (t) showTip(t.dataset.tip, e); else hideTip();
+});
+addEventListener('pointermove', (e) => { if (tipFrom && e.pointerType === 'mouse') moveTip(e); });
+addEventListener('pointerdown', (e) => {
+  if (e.pointerType === 'mouse') return;
+  const t = e.target.closest?.('[data-tip]');
+  if (!t) return;
+  showTip(t.dataset.tip, e);
+  tipTimer = setTimeout(hideTip, 2600);
+});
 
 export function elBadge(el) {
   return `<span class="badge" style="background:${EL[el].color}">${GLYPH[el]}${el}</span>`;
