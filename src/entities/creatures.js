@@ -135,7 +135,7 @@ export class Creatures {
   update(t, dt, playerPos, engagedId) {
     for (const c of this.list) {
       const dist = Math.hypot(c.home.x - playerPos.x, c.home.z - playerPos.z);
-      const near = dist < 130;
+      const near = dist < 80;
       if (!near) { if (c.obj) c.obj.holder.visible = false; continue; }
       if (!c.obj) { this.ensureObj(c); continue; }
       const dead = this.isDefeated(c, t) && c.id !== engagedId;
@@ -168,7 +168,12 @@ export class Creatures {
       }
       c.obj.holder.position.copy(c.pos);
       c.obj.holder.rotation.y = c.facing;
-      if (dist < 70) c.obj.anim.update(dt);
+      const shadows = dist < 40;
+      if (c.obj.shadows !== shadows) {
+        c.obj.shadows = shadows;
+        c.obj.holder.traverse((o) => { if (o.isMesh) o.castShadow = shadows; });
+      }
+      if (dist < 60) c.obj.anim.update(dt);
     }
   }
 

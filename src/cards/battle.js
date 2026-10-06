@@ -121,6 +121,7 @@ export class Battle {
     let dmg = it.dmg;
     if (e.charged && m.dmg > 0) e.charged = false;
     const out = { name: it.name, key: it.key, dmg: 0, effects: [] };
+    this.locked.clear(); // a lock only lasts one turn
     if (m.charge) { e.charged = true; out.effects.push('charging'); }
     if (m.enrage) { e.enrage += m.enrage; out.effects.push('enraged'); }
     if (m.shield) { e.shield += Math.round(e.maxHp * m.shield); out.effects.push('shielded'); }
@@ -153,9 +154,7 @@ export class Battle {
 
   // rewards on a pve win
   rewards() {
-    const p = this.profile;
-    const e = this.enemy;
-    let gold = 3 + e.level * 2;
+    let gold = 3 + this.enemy.level * 2;
     if (this.has('salvager')) gold += 4;
     return { gold };
   }

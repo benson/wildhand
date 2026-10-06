@@ -161,23 +161,15 @@ export class Forest {
     this.leafMat.onBeforeCompile = (sh) => {
       sh.uniforms.uTime = u.uTime;
       sh.vertexShader = sh.vertexShader
-        .replace('#include <common>', '#include <common>\nuniform float uTime;\nvarying vec3 vLeafW;')
+        .replace('#include <common>', '#include <common>\nuniform float uTime;\nattribute vec3 aOrigin;\nvarying vec3 vLeafW;')
         .replace('#include <begin_vertex>', `#include <begin_vertex>
-        #ifdef USE_INSTANCING
-        vec3 ip = instanceMatrix[3].xyz;
-        #else
-        vec3 ip = vec3(0.0);
-        #endif
-        float sway = sin(uTime * 1.3 + ip.x * 0.2 + ip.z * 0.13) * 0.5 + sin(uTime * 2.7 + position.y + ip.x) * 0.25;
-        transformed.x += sway * 0.06 * position.y;
-        transformed.z += sway * 0.04 * position.y;
-        transformed += normal * sin(uTime * 3.0 + position.x * 3.0 + position.z * 2.0) * 0.04;
-        #ifdef USE_INSTANCING
-        vLeafW = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;
-        #else
-        vLeafW = (modelMatrix * vec4(transformed, 1.0)).xyz;
-        #endif`);
-      // soft wrap lighting for foliage: lift the dark side a little
+        // geometry is pre-merged in world space; aOrigin is each tree's base
+        float hgt = max(transformed.y - aOrigin.y, 0.0);
+        float sway = sin(uTime * 1.3 + aOrigin.x * 0.2 + aOrigin.z * 0.13) * 0.5 + sin(uTime * 2.7 + hgt + aOrigin.x) * 0.25;
+        transformed.x += sway * 0.06 * hgt;
+        transformed.z += sway * 0.04 * hgt;
+        transformed += normal * sin(uTime * 3.0 + transformed.x * 3.0 + transformed.z * 2.0) * 0.04;
+        vLeafW = (modelMatrix * vec4(transformed, 1.0)).xyz;`);
       sh.fragmentShader = sh.fragmentShader
         .replace('#include <common>', '#include <common>\nvarying vec3 vLeafW;')
         // dissolve leaves close to the camera so they never fill the screen
@@ -191,49 +183,64 @@ export class Forest {
           if (camD < 2.0 + dither * 2.2) discard;`)
         .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * 0.12;');
     };
-    this.trunkMat = new THREE.MeshStandardMaterial({ color: '#6e4c34', roughness: 0.95, vertexColors: true });
-    this.birchMat = new THREE.MeshStandardMaterial({ color: '#e6e0d4', roughness: 0.9, vertexColors: true });
+    this.trunkMat = new THREE.MeshStandardMaterial({ roughness: 0.95, vertexColors: true });
     this.variants = {};
     for (const kind of ['oak', 'birch', 'pine', 'bush']) {
       this.variants[kind] = [0, 1, 2].map((i) => buildVariant(kind, 1000 + i * 77 + kind.length * 13));
     }
   }
 
-  // placements: [{ kind, x, y, z, s, rot, color: THREE.Color }]
+  // placements: [{ kind, x, y, z, s, rot, color: THREE.Color, variant }]
+  // trees are merged per 64m tile: one leaf mesh + one trunk mesh per tile
   build(placements) {
-    const byKey = new Map();
-    placements.forEach((p, i) => {
-      const v = p.variant ?? (i % 3);
-      const key = `${p.kind}:${v}`;
-      if (!byKey.has(key)) byKey.set(key, []);
-      byKey.get(key).push(p);
-    });
+    const tiles = new Map();
+    for (const p of placements) {
+      const key = `${Math.floor(p.x / 64)}:${Math.floor(p.z / 64)}`;
+      if (!tiles.has(key)) tiles.set(key, []);
+      tiles.get(key).push(p);
+    }
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3();
-    for (const [key, list] of byKey) {
-      const [kind, v] = key.split(':');
-      const variant = this.variants[kind][+v];
-      const leaves = new THREE.InstancedMesh(variant.leaves, this.leafMat, list.length);
-      const trunk = variant.trunk ? new THREE.InstancedMesh(variant.trunk, kind === 'birch' ? this.birchMat : this.trunkMat, list.length) : null;
-      list.forEach((p, i) => {
+    const oak = new THREE.Color('#6e4c34'), birch = new THREE.Color('#e6e0d4');
+    for (const list of tiles.values()) {
+      const leafGeos = [], trunkGeos = [];
+      for (const p of list) {
+        const variant = this.variants[p.kind][p.variant ?? 0];
         q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), p.rot);
         sc.setScalar(p.s);
         m.compose(new THREE.Vector3(p.x, p.y, p.z), q, sc);
-        leaves.setMatrixAt(i, m);
-        leaves.setColorAt(i, p.color);
-        if (trunk) trunk.setMatrixAt(i, m);
-      });
-      leaves.castShadow = true;
-      leaves.receiveShadow = true;
-      leaves.computeBoundingSphere();
+        const lg = variant.leaves.clone().applyMatrix4(m);
+        tint(lg, p.color);
+        origin(lg, p);
+        leafGeos.push(lg);
+        if (variant.trunk) {
+          const tg = variant.trunk.clone().applyMatrix4(m);
+          tint(tg, p.kind === 'birch' ? birch : oak);
+          origin(tg, p);
+          trunkGeos.push(tg);
+        }
+      }
+      const leaves = new THREE.Mesh(mergeGeometries(leafGeos), this.leafMat);
+      leaves.castShadow = leaves.receiveShadow = true;
       this.group.add(leaves);
-      if (trunk) {
-        trunk.castShadow = true;
-        trunk.receiveShadow = true;
-        trunk.computeBoundingSphere();
+      if (trunkGeos.length) {
+        const trunk = new THREE.Mesh(mergeGeometries(trunkGeos), this.trunkMat);
+        trunk.castShadow = trunk.receiveShadow = true;
         this.group.add(trunk);
       }
+      leafGeos.concat(trunkGeos).forEach((g) => g.dispose());
     }
     return this.group;
   }
   update(t) { this.uniforms.uTime.value = t; }
+}
+
+function tint(g, color) {
+  const c = g.attributes.color;
+  for (let i = 0; i < c.count; i++) c.setXYZ(i, c.getX(i) * color.r, c.getY(i) * color.g, c.getZ(i) * color.b);
+}
+function origin(g, p) {
+  const n = g.attributes.position.count;
+  const a = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { a[i * 3] = p.x; a[i * 3 + 1] = p.y; a[i * 3 + 2] = p.z; }
+  g.setAttribute('aOrigin', new THREE.BufferAttribute(a, 3));
 }

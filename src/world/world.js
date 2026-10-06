@@ -5,7 +5,8 @@ import { createSky } from './sky.js';
 import { createWater } from './water.js';
 import { createGrass } from './grass.js';
 import { Forest } from './trees.js';
-import { instanceModel, loadStatic } from './assets.js';
+import { StaticBatcher } from './batcher.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { mulberry32 } from '../cards/profile.js';
 import { SKY } from './sky.js';
 
@@ -87,6 +88,7 @@ export class World {
     this.colliders = new Colliders();
     this.updatables = [];
     this.interactables = []; // { pos, radius, label, action }
+    this.batcher = new StaticBatcher();
   }
 
   async build(onProgress = () => {}) {
@@ -133,6 +135,7 @@ export class World {
     onProgress(0.75, 'building the town');
     await this.buildTown();
     await this.buildRuins();
+    await this.batcher.build(scene);
     this.addMotes();
     onProgress(0.85, 'waking creatures');
   }
@@ -181,11 +184,10 @@ export class World {
   async placeProps() {
     const { terrain } = this;
     const rng = mulberry32(WORLD_SEED + 7);
-    const sets = {};
     const add = (name, x, z, s = 1, rot = rng() * Math.PI * 2, sink = 0.05, collide = 0) => {
       const y = terrain.heightAt(x, z) - sink;
       const m = new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rot), new THREE.Vector3(s, s, s));
-      (sets[name] ||= []).push(m);
+      this.batcher.add(name, m, !name.startsWith('flower'));
       if (collide) this.colliders.add(x, z, collide * s);
     };
     const rocks = ['rock_largeA', 'rock_largeB', 'rock_largeC', 'rock_largeD'];
@@ -229,22 +231,18 @@ export class World {
       const x = POND.x + Math.cos(a) * d, z = POND.z + Math.sin(a) * d;
       if (terrain.heightAt(x, z) > -0.5) continue;
       const m = new THREE.Matrix4().compose(new THREE.Vector3(x, 0.03, z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rng() * 6), new THREE.Vector3(2, 2, 2));
-      (sets.lily_large ||= []).push(m);
+      this.batcher.add('lily_large', m, false);
     }
-    await Promise.all(Object.entries(sets).map(async ([name, mats]) => {
-      const g = await instanceModel(name, mats, { shadows: !name.startsWith('flower') && name !== 'lily_large' });
-      this.scene.add(g);
-    }));
   }
 
-  async put(name, x, z, { s = 1, rot = 0, y = null, collide = 0 } = {}) {
-    const o = await loadStatic(name);
-    o.position.set(x, y ?? this.terrain.heightAt(x, z), z);
-    o.rotation.y = rot;
-    o.scale.setScalar(s);
-    this.scene.add(o);
+  put(name, x, z, { s = 1, rot = 0, y = null, collide = 0, shadow = true } = {}) {
+    const m = new THREE.Matrix4().compose(
+      new THREE.Vector3(x, y ?? this.terrain.heightAt(x, z), z),
+      new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rot),
+      new THREE.Vector3(s, s, s),
+    );
+    this.batcher.add(name, m, shadow);
     if (collide) this.colliders.add(x, z, collide);
-    return o;
   }
 
   async buildTown() {
@@ -284,23 +282,29 @@ export class World {
       const a = (i / 10) * Math.PI * 2 + 0.2;
       this.lantern(Math.cos(a) * (TOWN_R - 6), Math.sin(a) * (TOWN_R - 6));
     }
+    this.finishLanterns();
   }
 
+  // all lanterns share two merged meshes (posts + glowing lamps)
   lantern(x, z) {
     const y = this.terrain.heightAt(x, z);
-    const g = new THREE.Group();
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 2.6, 6), new THREE.MeshStandardMaterial({ color: '#4a3526', roughness: 0.9 }));
-    pole.position.y = 1.3;
-    pole.castShadow = true;
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.06, 0.06), pole.material);
-    arm.position.set(0.25, 2.5, 0);
-    const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 8), new THREE.MeshStandardMaterial({ color: '#ffcf7a', emissive: '#ffb347', emissiveIntensity: 3 }));
-    lamp.position.set(0.5, 2.3, 0);
-    g.add(pole, arm, lamp);
-    g.position.set(x, y, z);
-    g.rotation.y = Math.random() * 6;
-    this.scene.add(g);
+    const rot = Math.random() * 6;
+    const m = new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rot), new THREE.Vector3(1, 1, 1));
+    const pole = new THREE.CylinderGeometry(0.07, 0.09, 2.6, 6).translate(0, 1.3, 0);
+    const arm = new THREE.BoxGeometry(0.6, 0.06, 0.06).translate(0.25, 2.5, 0);
+    const lamp = new THREE.SphereGeometry(0.2, 12, 8).translate(0.5, 2.3, 0);
+    (this._lanternPosts ||= []).push(pole.applyMatrix4(m), arm.toNonIndexed().applyMatrix4(m));
+    (this._lanternLamps ||= []).push(lamp.applyMatrix4(m));
     this.colliders.add(x, z, 0.25);
+  }
+
+  finishLanterns() {
+    const posts = this._lanternPosts.map((g) => (g.index ? g.toNonIndexed() : g));
+    posts.forEach((g) => g.deleteAttribute('uv'));
+    const pm = new THREE.Mesh(mergeGeometries(posts), new THREE.MeshStandardMaterial({ color: '#4a3526', roughness: 0.9 }));
+    pm.castShadow = true;
+    const lm = new THREE.Mesh(mergeGeometries(this._lanternLamps), new THREE.MeshStandardMaterial({ color: '#ffcf7a', emissive: '#ffb347', emissiveIntensity: 3 }));
+    this.scene.add(pm, lm);
   }
 
   buildStall(pos, rot) {
@@ -339,16 +343,21 @@ export class World {
     canopy.position.set(0, 3.0, 0);
     canopy.castShadow = true;
     g.add(canopy);
-    // little card stacks on the counter
-    const cardMat = (c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.4, emissive: c, emissiveIntensity: 0.25 });
-    ['#ff6a3d', '#3db8ff', '#6fdc5a', '#ffd23d'].forEach((c, i) => {
+    // little card stacks on the counter (one merged mesh)
+    const cards = [];
+    ['#ff6a3d', '#3db8ff', '#6fdc5a', '#ffd23d'].forEach((hex, i) => {
+      const c = new THREE.Color(hex);
       for (let k = 0; k < 4; k++) {
-        const card = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.02, 0.5), cardMat(c));
-        card.position.set(-1.2 + i * 0.8, 1.1 + k * 0.025, 1.0);
-        card.rotation.y = (Math.random() - 0.5) * 0.3;
-        g.add(card);
+        const card = new THREE.BoxGeometry(0.35, 0.02, 0.5).toNonIndexed();
+        card.rotateY((Math.random() - 0.5) * 0.3).translate(-1.2 + i * 0.8, 1.1 + k * 0.025, 1.0);
+        const col = new Float32Array(card.attributes.position.count * 3);
+        for (let v = 0; v < col.length; v += 3) { col[v] = c.r; col[v + 1] = c.g; col[v + 2] = c.b; }
+        card.setAttribute('color', new THREE.BufferAttribute(col, 3));
+        card.deleteAttribute('uv');
+        cards.push(card);
       }
     });
+    g.add(new THREE.Mesh(mergeGeometries(cards), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.4, emissive: '#ffffff', emissiveIntensity: 0.08 })));
     g.position.copy(pos);
     g.rotation.y = rot;
     this.scene.add(g);
