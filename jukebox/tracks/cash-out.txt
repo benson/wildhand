@@ -1,0 +1,71 @@
+title  cash out
+tempo  118
+beats  4
+steps  4
+swing  0
+
+voice mar     marimba  vol=1.12 rev=0.2 pan=0.1
+voice pluck   pluck    vol=0.68 center=G4 arp=0.025 pan=-0.25
+voice bass    synbass  vol=1.27
+voice kick    kick     vol=1.2
+voice cowbell cowbell  vol=0.52 pan=0.3
+voice shaker  shaker   vol=0.45 pan=-0.3
+voice coin    coin     vol=0.75
+voice chips   chips    vol=0.75
+
+# intro: the shop door opens
+pattern P
+mar     | _ | .... .... D5 . E5 . F#5 . A5 . |
+pluck   | . . [G] . . . [G] . . . [G] . . . [G] . | . . [D7] . . . [D7] . . . [D7] . . . [D7] . |
+bass    | G1- . G2 D2- . G2 G1- . G2 B1- D2- | D2- . D3 A1- . D2 D2- . C3 A1- F#1- |
+kick    | _ | x... ..x. x... ..x. |
+shaker  | x.xo x.xo x.xo x.xo | % |
+coin    | x... .... .... .... | _ |
+
+# A: G Em C D7
+pattern A
+mar     | B4 . D5 . G5- . D5 E5 . D5 . B4--- | E5 . G5 . B5- . A5 G5 . E5 . B4--- | C5 . E5 . G5- . A5 G5 . E5 . C5-- D5 | D5- F#5- A5- C6- B5 A5 F#5 A5 D5--- |
+pluck   | . . [G] . . . [G] . . . [G] . . . [G] . | . . [Em] . . . [Em] . . . [Em] . . . [Em] . | . . [C] . . . [C] . . . [C] . . . [C] . | . . [D7] . . . [D7] . . . [D7] . . . [D7] . |
+bass    | G1- . G2 D2- . G2 G1- . G2 B1- D2- | E1- . E2 B1- . E2 E1- . E2 G1- B1- | C2- . C3 G1- . C2 C2- . C3 E2- G1- | D2- . D3 A1- . D2 D2- . C3 A1- F#1- |
+kick    | x... ..x. x... ..x. | % | % | % |
+cowbell | .... x..x .... x... | % | % | .... x..x .... x.xx |
+shaker  | x.xo x.xo x.xo x.xo | % | % | % |
+coin    | .... .... .... x... | _ | _ | _ |
+chips   | _ | _ | _ | _ |
+
+# B: C D Bm7-E7 Am7-D7
+pattern B from A
+mar     | E5- E5 G5 . E5 C5 . G5--- E5- . . | F#5- F#5 A5 . F#5 D5 . A5--- F#5- . . | D5- B4 D5 F#5- . . E5- G#5 B5 D6- . . | C6- B5 A5 G5- E5 . F#5 . A5 . D5--- |
+pluck   | . . [C] . . . [C] . . . [C] . . . [C] . | . . [D] . . . [D] . . . [D] . . . [D] . | . . [Bm7] . . . [Bm7] . . . [E7] . . . [E7] . | . . [Am7] . . . [Am7] . . . [D7] . . . [D7] . |
+bass    | C2- . C3 G1- . C2 C2- . C3 E2- G1- | D2- . D3 A1- . D2 D2- . D3 F#2- A1- | B1- . B2 F#1- . B1 E2- . E3 G#1- B1- | A1- . A2 E2- . A1 D2- . D3 F#2- C2- |
+coin    | _ | .... .... x... .... | _ | _ |
+chips   | _ | _ | _ | .... .... .... x... |
+
+# A2: the tune again, brighter
+pattern A2 from A
+mar     | B4 D5 G5 . B5- . A5 G5 . D5 . G5--- | G5 E5 B4 . E5- . G5 B5 . A5 . G5--- | E5 G5 C6 . G5- . E5 G5 . A5 . G5--- | F#5 A5 D6 . C6- . A5 F#5 . E5 . D5--- |
+coin    | .... .... .... x... | _ | .... .... .... x... | _ |
+chips   | _ | _ | _ | .... .... .... x... |
+
+# C: borrowed bVI and bVII, pluck sparkles
+pattern C
+mar     | G5- . Bb5 . . G5 . D5--- . . . . | A5- . C6 . . A5 . F5--- . . . . | B5- . D6 . . B5 . G5--- . . . . | A5 . F#5 . D5 . F#5 . A5 . C6 . D6--- |
+pluck   | [Ebmaj7]--- .... [Ebmaj7]--- .... | [F]--- .... [F]--- .... | [G]--- .... [G]--- .... | [D7]- [D7]- [D7]- [D7]- [D7]- [D7]- [D7]- [D7]- |
+bass    | Eb2--- . . Eb2- Bb1--- . . Bb1- | F2--- . . F2- C2--- . . C2- | G1--- . . G2- D2--- . . D2- | D2- . D2 D2- . D2 C2- . C2 A1- F#1- |
+kick    | x... .... x... .... | % | % | x... x... x... x.x. |
+cowbell | _ | _ | _ | .... .... x.x. x.x. |
+shaker  | x.x. x.x. x.x. x.x. | % | % | % |
+coin    | _ | _ | _ | _ |
+chips   | _ | _ | _ | _ |
+
+# T: Am7 D7 run home
+pattern T
+mar     | C6 B5 A5 G5 F#5 E5 D5 C5 B4 . A4 . D5--- |
+pluck   | . . [Am7] . . . [Am7] . . . [D7] . . . [D7] . |
+bass    | A1- . A2 E2- . A1 D2- . D3 C2- F#1- |
+kick    | x... ..x. x... x... |
+cowbell | .... x..x .... x... |
+shaker  | x.xo x.xo x.xo xxxx |
+
+play P
+loop A B A2 C T

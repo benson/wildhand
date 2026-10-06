@@ -1,0 +1,56 @@
+title  jackpot!
+tempo  132
+beats  4
+steps  4
+swing  0
+
+voice brass  brass    vol=0.6 center=G4 gate=0.75 rev=0.2 pan=-0.15
+voice sq     square   vol=0.42 arp=0.03 pan=0.2 rev=0.15
+voice bass   synbass  vol=0.9
+voice kick   kick     vol=0.95
+voice clap   clap     vol=0.5
+voice hat    hat      vol=0.35 pan=0.25
+voice crash  crash    vol=0.5
+voice jack   jackpot  vol=0.6
+
+# fanfare
+pattern F
+brass | C5-- C5 C5-- C5 E5--- G5--- | A5-- G5 E5-- G5 F5-- E5 D5-- E5 | C6!------- ........ |
+sq    | G4-- G4 G4-- G4 C5--- E5--- | F5-- E5 C5-- E5 D5-- C5 B4-- C5 | C5+E5+G5+C6------- ........ |
+bass  | C2-- C2 C2-- C2 C2--- C2--- | F2-- F2 F2-- F2 G2-- G2 G2-- G2 | C2------- ........ |
+kick  | x..x x..x x... x... | x..x x..x x..x x..x | X... .... .... .... |
+clap  | ..x. ..x. .... .... | ..x. ..x. xxxx XXXX | X... .... .... .... |
+hat   | x.x. x.x. x.x. x.x. | % | _ |
+crash | X... .... .... .... | _ | X... .... .... .... |
+jack  | _ | _ | x... .... .... .... |
+
+# happy loop: I vi IV V
+pattern A
+sq    | E5- G5- C6- G5- E5 G5 A5- G5--- | A5- C6- E6- C6- A5--- .... | F5- A5- C6- A5- G5- F5- E5- D5- | D5- E5- F5- G5--- . . B4- D5- |
+brass | . . [C]- . . [C] . . . [C]- .... | . . [Am]- . . [Am] . . . [Am]- .... | . . [F]- . . [F] . . . [F]- .... | . . [G]- . . [G] . . . [G7]- .... |
+bass  | C2- C3- G2- C3- C2- C3- E2- G2- | A1- A2- E2- A2- A1- A2- C2- E2- | F1- F2- C2- F2- F1- F2- A1- C2- | G1- G2- D2- G2- G1- G2- A1- B1- |
+kick  | x... x... x... x... | % | % | % |
+clap  | .... x... .... x... | % | % | % |
+hat   | ..x. ..x. ..x. ..x. | % | % | ..x. ..x. ..x. .xxx |
+crash | X... .... .... .... | _ | _ | _ |
+jack  | _ | _ | _ | _ |
+
+# answer: IV V iii-vi ii-V
+pattern B from A
+sq    | A5--- C6- A5 . F5- G5- A5--- | B5--- D6- B5 . G5- A5- B5--- | C6- B5- G5- E5- A5- G5- E5- C5- | D5- E5- F5- A5- G5- F5- E5- D5- |
+brass | [F]--- . . [F]- . . [F]- .... | [G]--- . . [G]- . . [G]- .... | [Em7]--- . . [Em7]- [Am7]--- . . [Am7]- | [Dm7]--- . . [Dm7]- [G7]--- . . [G7]- |
+bass  | F2- . F2 A2- C3- F2- . F2 E2- D2- | G2- . G2 B2- D3- G2- . G2 F2- E2- | E2- . E2 G2- B2- A1- . A1 C2- E2- | D2- . D2 F2- A2- G1- . G1 A1- B1- |
+
+# turnaround: borrowed iv, then V7 blips
+pattern C
+sq    | F5+Ab5+C6- F5+Ab5+C6- . . F5+Ab5+C6- . . F5+Ab5+C6- .... | G5+B5+D6- G5+B5+D6- . . G5+B5+F6- . . B4- C5- D5- |
+brass | [Fm]--- ........ [Fm]--- | [G7]--- . . . . [G7]- . . [G7]!--- |
+bass  | F1--- . . F2- Ab1--- . . Ab2- | G1--- . . G2- G1- A1- B1- D2- |
+kick  | x... .... x... .... | x... x... x.x. xxxx |
+clap  | .... x... .... x... | .... x... x.x. XXXX |
+hat   | x.x. x.x. x.x. x.x. | % |
+crash | _ | _ |
+jack  | _ | _ |
+
+play F
+loop A B C

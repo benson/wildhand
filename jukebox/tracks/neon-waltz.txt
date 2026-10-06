@@ -1,0 +1,78 @@
+title  neon waltz
+tempo  168
+beats  3
+steps  2
+swing  0
+
+voice mbox  musicbox vol=1.42 rev=0.3 pan=0.1
+voice keys  epiano   vol=0.85 center=F4 gate=0.55 pan=-0.2
+voice bass  synbass  vol=1.61
+voice str   strings  vol=0.85 rev=0.35 pan=-0.3 att=0.08
+voice chip  pulse    vol=0.57 duty=0.125 arp=0.03 center=C5 pan=0.3
+voice ride  ride     vol=0.57 pan=0.25
+voice tamb  tamb     vol=0.57 pan=-0.25
+voice fx    ding     vol=0.85
+
+# intro: chip sparkle on the dominant
+pattern P
+mbox | ...... | .. G5- E5- |
+keys | .. [C7]- [C7]- | .. [C7]- [C7]- |
+bass | C2- .... | C2- .. G1- |
+str  | Bb4----- | = |
+chip | [C7]- [C7]- [C7]- | [C7]- . . C5+E5+G5+Bb5+C6- |
+ride | _ | x.x.x. |
+tamb | _ | ...x.x |
+fx   | x..... | _ |
+
+# A: F Dm Gm7 C7 F D7 Gm7 C7
+pattern A
+mbox | C5- F5- A5- | C6--- A5- | Bb5- A5- G5- | G5--- E5- | C5- F5- A5- | D6--- C6- | Bb5- A5 G5 F5- | E5- . G5 Bb5- |
+keys | .. [F]- [F]- | .. [Dm]- [Dm]- | .. [Gm7]- [Gm7]- | .. [C7]- [C7]- | .. [F]- [F]- | .. [D7]- [D7]- | .. [Gm7]- [Gm7]- | .. [C7]- [C7]- |
+bass | F2- .... | D2- .... | G2- .... | C2- .. . E2 | F2- .... | F#2- .... | G2- .... | C2- .. C3- |
+str  | F4----- | F4--- E4- | D4----- | E4--- G4- | A4----- | F#4--- A4- | Bb4--- G4- | Bb4--- C5- |
+chip | _ | _ | _ | _ | _ | _ | _ | _ |
+ride | x.x.x. | % | % | % | % | % | % | x.x.xx |
+tamb | ...x.x | % | % | % | % | % | % | % |
+fx   | _ | _ | _ | _ | _ | _ | _ | _ |
+
+# B: Bb Bbm Am7 D7 Gm7 C7 F F, chip blips answer each bar
+pattern B from A
+mbox | F5- Bb5- D6- | Db6--- Bb5- | C6- . A5 G5- | F#5--- A5- | G5- Bb5- D6- | E6--- D6 C6 | A5----- | ...... |
+keys | .. [Bb]- [Bb]- | .. [Bbm]- [Bbm]- | .. [Am7]- [Am7]- | .. [D7]- [D7]- | .. [Gm7]- [Gm7]- | .. [C7]- [C7]- | .. [F]- [F]- | .. [F]- [F]- |
+bass | Bb1- .... | Bb1- .... | A1- .... | D2- .. C2- | G1- .... | C2- .. . E2 | F1- .... | C2- .. A1- |
+str  | Bb4----- | Bb4--- Db5- | C5--- E5- | D5--- C5- | Bb4----- | Bb4--- G4- | A4- C5- F5- | F5- E5- C5- |
+chip | .... [Bb]- | .... [Bbm]- | .... [Am7]- | .... [D7]- | .... [Gm7]- | .... [C7]- | _ | [F]- [F]- [F]- |
+fx   | _ | _ | _ | _ | _ | _ | x..... | _ |
+
+# A2: melody ornamented, lands on F
+pattern A2 from A
+mbox | C5 D5 F5- A5- | C6- D6- C6- | Bb5- A5- G5- | G5--- E5- | C5 D5 F5- A5- | D6--- C6- | Bb5- G5- E5- | F5----- |
+keys | .. [F]- [F]- | .. [Dm]- [Dm]- | .. [Gm7]- [Gm7]- | .. [C7]- [C7]- | .. [F]- [F]- | .. [D7]- [D7]- | .. [C7]- [C7]- | .. [F]- [F]- |
+bass | F2- .... | D2- .... | G2- .... | C2- .. . E2 | F2- .... | F#2- .... | C2- .. E2- | F2- .. C2- |
+str  | F4----- | F4--- E4- | D4----- | E4--- G4- | A4----- | F#4--- A4- | E4- G4- C5- | A4----- |
+chip | _ | _ | _ | _ | _ | _ | _ | [F]----- |
+
+# C: ii-V-I sequence (played again a step down), strings take the tune
+pattern C
+mbox | ...... | .. .. E6- | .. C6- E6- | D6- C6- A5- |
+keys | .. [Gm7]- [Gm7]- | .. [C7]- [C7]- | .. [Fmaj7]- [Fmaj7]- | .. [Fmaj7]- [Fmaj7]- |
+bass | G2- .... | C2- .... | F2- .... | F2- .. C2- |
+str  | D5--- F5- | E5--- G5- | A5----- | = |
+chip | [Gm7]- [Gm7]- [Gm7]- | [C7]- [C7]- [C7]- | [Fmaj7]- [Fmaj7]- [Fmaj7]- | % |
+ride | _ | _ | _ | _ |
+tamb | ...x.x | % | % | % |
+fx   | _ | _ | _ | _ |
+
+# T: turnaround back to F
+pattern T
+mbox | G5- A5- Bb5- | C6- D6 C6 Bb5 G5 |
+keys | .. [Gm7]- [Gm7]- | .. [C7]- [C7]- |
+bass | G2- .. D2- | C2- .. . E2 |
+str  | Bb4----- | E5----- |
+chip | _ | [C7]- [C7]- [C7]- |
+ride | x.x.x. | x.x.xx |
+tamb | ...x.x | % |
+fx   | _ | _ |
+
+play P
+loop A B A2 C C-2 T

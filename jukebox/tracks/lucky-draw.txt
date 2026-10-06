@@ -1,0 +1,66 @@
+title  lucky draw
+tempo  112
+beats  4
+steps  4
+swing  0.18
+
+voice keys   epiano vol=0.5 center=A4 gate=0.7 rev=0.25 pan=-0.1
+voice organ  organ  vol=0.55 pan=0.15 rev=0.2
+voice vibes  vibes  vol=0.6 pan=0.3 rev=0.3
+voice bass   fmbass vol=0.9
+voice rim    rim    vol=0.45 pan=-0.3
+voice shaker shaker vol=0.3 pan=0.3
+voice ride   ride   vol=0.3 pan=0.2
+voice fx     chips  vol=0.5
+
+pattern I
+keys   | [Gm9]-- [Gm9]-- [Gm9]--- [Gm9]- [Gm9]--- | [C13]-- [C13]-- [C13]--- [C13]- [C13]--- |
+organ  | _ | _ |
+vibes  | _ | ........ G5- A5- Bb5- G5- |
+bass   | G2----- D3- G2----- D3- | C2----- G2- C2--- D2- E2- |
+rim    | x..x ..x. ..x. .x.. | ..x. .x.. x..x ..x. |
+shaker | _ | x.xx x.xx x.xx x.xx |
+ride   | x.x. x.xx x.x. x.xx | % |
+fx     | _ | _ |
+
+pattern A
+keys   | [Fmaj7]-- [Fmaj7]-- [Fmaj7]--- [Fmaj7]- [Fmaj7]--- | [Dm9]-- [Dm9]-- [Dm9]--- [Dm9]- [Dm9]--- | [Gm7]-- [Gm7]-- [Gm7]--- [Gm7]- [Gm7]--- | [C9]-- [C9]-- [C9]--- [C9]- [C9]--- |
+organ  | A4- C5- E5--- D5 C5- A4---- | .. E5- F5- A5--- G5- E5- D5- | F5--- . D5 Bb4- . D5 F5- A5--- | G5------- . E5- D5- E5- . |
+vibes  | _ | _ | _ | _ |
+bass   | F2----- C3- F2----- C3- | D2----- A2- D2----- A2- | G2----- D3- G2----- D3- | C2----- G2- C2--- E2- G2- |
+rim    | x..x ..x. ..x. .x.. | ..x. .x.. x..x ..x. | x..x ..x. ..x. .x.. | ..x. .x.. x..x ..x. |
+shaker | x.xx x.xx x.xx x.xx | % | % | % |
+ride   | x.x. x.xx x.x. x.xx | % | % | % |
+fx     | _ | _ | _ | .... .... .... x... |
+
+pattern B from A
+keys   | [Am7]-- [Am7]-- [Am7]--- [Am7]- [Am7]--- | [D7]-- [D7]-- [D7]--- [D7]- [D7]--- | [Gm9]-- [Gm9]-- [Gm9]--- [Gm9]- [Gm9]--- | [C13]-- [C13]-- [C13]--- [C13]- [C13]--- |
+organ  | G5- E5- C5- . E5 G5--- A5- G5- | F#5--- . . A5- C6--- A5- F#5- | A5- Bb5- A5- G5- F5--- D5- .. | E5--- G5- A5- Bb5--- A5- G5- |
+bass   | A2----- E2- A2----- E2- | D2----- A2- D2--- F#2- A2- | G2----- D2- G2----- D2- | C2----- G2- C2--- Bb2- E2- |
+fx     | _ | _ | _ | _ |
+
+pattern C from A
+keys   | [Bbmaj7]-- [Bbmaj7]-- [Bbmaj7]--- [Bbmaj7]- [Bbmaj7]--- | [Bbm6]-- [Bbm6]-- [Bbm6]--- [Bbm6]- [Bbm6]--- | [Am7]-- [Am7]-- [Am7]--- [D7]- [D7]--- | [Gm7]-- [Gm7]-- [Gm7]--- [C7]- [C7]--- |
+organ  | D5--------------- | Db5--------------- | C5------- F#4------- | F4------- E4------- |
+vibes  | F5- A5- D6--- C6- A5- F5- .. | F5- G5- Db6--- C6- Bb5- G5- .. | E5- G5- C6- . E5 F#5- A5- C6- .. | Bb5--- A5- G5- E5--- D5- C5- |
+bass   | Bb1----- F2- Bb1----- F2- | Bb1----- F2- Bb1----- Db2- | A1----- E2- D2----- A2- | G2----- D2- C2----- G1- |
+rim    | x..x ..x. ..x. .x.. | ..x. .x.. x..x ..x. | x..x ..x. ..x. .x.. | ..x. .x.. x.x. xxx. |
+shaker | x.x. x.x. x.x. x.x. | % | % | x.xx x.xx x.xx x.xx |
+fx     | _ | _ | _ | _ |
+
+pattern A2 from A
+vibes  | _ | ........ A5- C6- D6- C6- | _ | ........ Bb5- A5- G5- E5- |
+fx     | _ | _ | _ | _ |
+
+pattern T from A
+keys   | [Gm7]-- [Gm7]-- [Gm7]--- [Gm7]- [Gm7]--- | [C7]-- [C7]-- [C7]--- [C7]- [C7]--- |
+organ  | Bb4- D5- F5- A5--- G5- F5- D5- | E5- . G5 . Bb5- .. C6------ |
+vibes  | _ | _ |
+bass   | G2----- D3- G2--- A2- Bb2- | C2----- G2- C2--- D2- E2- |
+rim    | x..x ..x. ..x. .x.. | ..x. .x.. x.x. xxxx |
+shaker | x.xx x.xx x.xx x.xx | % |
+ride   | x.x. x.xx x.x. x.xx | % |
+fx     | _ | .... .... x... .... |
+
+play I
+loop A B C A2 T

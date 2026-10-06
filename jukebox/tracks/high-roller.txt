@@ -1,0 +1,63 @@
+title  high roller
+tempo  128
+beats  4
+steps  4
+swing  0
+
+voice lead   pulse   vol=0.7 duty=0.25 pan=-0.1
+voice brass  brass   vol=0.5 center=G4 pan=0.2 gate=0.8
+voice arp    square  vol=0.3 arp=0.03 center=C5 gate=0.5 pan=0.35
+voice bass   slap    vol=0.9
+voice kick   kick    vol=0.95
+voice clap   clap    vol=0.6
+voice hat    hat     vol=0.4
+voice fx     jackpot vol=0.5
+
+pattern I
+lead  | _ | ........ G4- A4- B4- D5- |
+brass | [G]- .... [G]- .. [G]- .... | [G7]--- [G7]--- [G7]--- [G7]--- |
+arp   | _ | [G]- [G]- [G]- [G]- [G7]- [G7]- [G7]- [G7]- |
+bass  | G2-- G3 . G2- G3- . G2 G3- A2 B2- | % |
+kick  | x... x... x... x... | x... x... x.x. xxxx |
+clap  | .... x... .... x... | .... x... .... x.xx |
+hat   | ..x. ..x. ..x. ..x. | ..x. ..x. ..x. ..xx |
+fx    | _ | _ |
+
+pattern A
+lead  | C5- E5- G5- . C6- . G5- E5- G5- | A5--- G5- E5- . C5- E5--- . | F5- A5- C6- . A5- F5- A5- G5- F5 | G5------- . B4- D5- F5-- |
+brass | [C]- .... [C]- .. [C]- .... | [Am]- .... [Am]- .. [Am]- .... | [F]- .... [F]- .. [F]- .... | [G]- .... [G]- .. [G]- .... |
+arp   | [C]- [C]- [C]- [C]- [C]- [C]- [C]- [C]- | [Am]- [Am]- [Am]- [Am]- [Am]- [Am]- [Am]- [Am]- | [F]- [F]- [F]- [F]- [F]- [F]- [F]- [F]- | [G]- [G]- [G]- [G]- [G]- [G]- [G]- [G]- |
+bass  | C2-- C3 . C2- C3- . C2 C3- G2 B2- | A1-- A2 . A1- A2- . A1 A2- G2 E2- | F2-- F3 . F2- F3- . F2 F3- E2 F#2- | G2-- G3 . G2- G3- . G2 G3- A2 B2- |
+kick  | x... x... x... x... | % | % | x... x... x... x.x. |
+clap  | .... x... .... x... | % | % | .... x... .... x.xx |
+hat   | ..x. ..x. ..x. ..x. | ..x. ..x. ..x. .xxx | ..x. ..x. ..x. ..x. | ..x. ..x. .xx. xxxx |
+fx    | _ | _ | _ | _ |
+
+pattern B from A
+lead  | A5- . A5 C6- A5- F5--- C5- .- | B5- . B5 D6- B5- G5--- D5- .- | G#5- B5- D6- E6--- D6 B5- G#5- . | A5------- .- E5- C5- A4- |
+brass | [F]- .... [F]- .. [F]- .... | [G]- .... [G]- .. [G]- .... | [E7]- .... [E7]- .. [E7]- .... | [Am]- .... [Am]- .. [Am]- .... |
+arp   | [F]- [F]- [F]- [F]- [F]- [F]- [F]- [F]- | [G]- [G]- [G]- [G]- [G]- [G]- [G]- [G]- | [E7]- [E7]- [E7]- [E7]- [E7]- [E7]- [E7]- [E7]- | [Am]- [Am]- [Am]- [Am]- [Am]- [Am]- [Am]- [Am]- |
+bass  | F2-- F3 . F2- F3- . F2 F3- E2 F#2- | G2-- G3 . G2- G3- . G2 G3- F#2 F2- | E2-- E3 . E2- E3- . E2 E3- B2 G#2- | A1-- A2 . A1- A2- . A1 A2- C2 E2- |
+fx    | _ | _ | _ | .... .... .... x... |
+
+pattern C from A
+lead  | A5--- G5- E5- C5------- | B4- D5- G5--- ........ | F5- E5- D5- C5- A4--- . C5- D5 | F5--- E5- D5- B4--- G4- .- |
+brass | [Fmaj7]--------------- | [Em7]--------------- | [Dm7]--------------- | [G7]- .... [G7]- .. [G7]- .... |
+arp   | [Fmaj7]- [Fmaj7]- [Fmaj7]- [Fmaj7]- [Fmaj7]- [Fmaj7]- [Fmaj7]- [Fmaj7]- | [Em7]- [Em7]- [Em7]- [Em7]- [Em7]- [Em7]- [Em7]- [Em7]- | [Dm7]- [Dm7]- [Dm7]- [Dm7]- [Dm7]- [Dm7]- [Dm7]- [Dm7]- | [G7]- [G7]- [G7]- [G7]- [G7]- [G7]- [G7]- [G7]- |
+bass  | F2--- A2--- C3--- E3--- | E2--- G2--- B2--- D3--- | D2--- F2--- A2--- C3--- | G2- G2- . G2 . G2 G3- F3- D3- B2- |
+kick  | x... .... x... .... | % | % | x... x... x... xxxx |
+clap  | .... .... x... .... | % | % | .... x... .... x.xx |
+hat   | x.x. x.x. x.x. x.x. | % | % | ..x. ..x. .xx. xxxx |
+
+pattern T
+lead  | D5- F5- A5- C6--- A5- F5- .- | G5- B5- D6- F6- G6------ . |
+brass | [Dm7]- .... [Dm7]- .. [Dm7]- .... | [G7]- [G7]- [G7]- [G7]- [G7]--- .--- |
+arp   | [Dm7]- [Dm7]- [Dm7]- [Dm7]- [Dm7]- [Dm7]- [Dm7]- [Dm7]- | [G7]- [G7]- [G7]- [G7]- [G7]- [G7]- [G7]- [G7]- |
+bass  | D2-- D3 . D2- D3- . D2 D3- C3 A2- | G2- G2- G2- G2- G2--- B2- D3- |
+kick  | x... x... x... x... | x.x. x.x. xxxx XXXX |
+clap  | .... x... .... x... | .... x... x.x. xxxx |
+hat   | ..x. ..x. ..x. ..x. | xxxx xxxx xxxx xxxx |
+fx    | _ | .... .... .... x... |
+
+play I
+loop A B C A+2 B+2 T

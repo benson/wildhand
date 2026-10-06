@@ -1,0 +1,69 @@
+title  card shark
+tempo  104
+beats  4
+steps  4
+swing  0.2
+
+voice clav   clav    vol=0.55 center=A4 gate=0.45 pan=-0.25
+voice slap   slap    vol=0.9
+voice brass  brass   vol=0.55 center=C5 gate=0.8 rev=0.15 pan=0.15
+voice kick   kick    vol=0.85
+voice hat    hat     vol=0.35 pan=0.3
+voice conga  conga   vol=0.5 pan=-0.3
+voice riffle riffle  vol=0.5
+voice chips  chips   vol=0.5
+
+# intro: the clav sneaks in
+pattern I
+clav   | F4 . A4+Eb5 . . F4 A4+Eb5 . G4 . A4+Eb5 . F4 . C5 Eb5 | F4 . A4+Eb5 . . F4 A4+Eb5 . G4 . A4+Eb5 A4+Eb5 . Ab4 A4 C5 |
+hat    | x.xo x.xo x.xx x.xo | % |
+conga  | _ | .... .... ..oo XoXo |
+riffle | x... .... .... .... | _ |
+
+# A: F9 vamp, up to Bb9
+pattern A
+clav   | F4 . A4+Eb5 . . F4 A4+Eb5 . G4 . A4+Eb5 . F4 . C5 Eb5 | F4 . A4+Eb5 . . F4 A4+Eb5 . G4 . A4+Eb5 A4+Eb5 . Ab4 A4 C5 | Bb4 . D5+Ab5 . . Bb4 D5+Ab5 . C5 . D5+Ab5 . Bb4 . F5 Ab5 | Bb4 . D5+Ab5 . . Bb4 D5+Ab5 . C5+E5+Bb5 . . C5+E5+Bb5 . . C5+E5+Bb5 . |
+slap   | F1- . F2 . F1?? F1 . Eb2 . F2 . C2 . Eb2 F2 | F1- . F2 . F1?? F1 F1?? Ab1 . A1 . C2 . D2 Eb2 | Bb1- . Bb2 . Bb1?? Bb1 . Ab2 . Bb2 . F2 . Ab2 Bb2 | Bb1- . Bb2 . Bb1?? Bb1 Bb1?? C2 . . C2?? C2 . E2 . |
+brass  | _ | ........ .... . [F7]! [F7]!- | _ | .... .... [C7]!- . . [C7]!- . . |
+kick   | x... ..x. .xx. .... | % | % | % |
+hat    | x.xo x.xo x.xx x.xo | % | % | % |
+conga  | ..o. X.o. ..oo X.o. | % | % | % |
+riffle | x... .... .... .... | _ | _ | _ |
+chips  | _ | _ | _ | .... .... x... .... |
+
+# A2: brass answers the clav
+pattern A2 from A
+brass  | .... .... F4- Ab4 A4 . C5 . . | [F9]!- .. .... ........ | .... .... Bb4- Db5 D5 . F5 . . | [C7]!- . . [C7]!- . . [C7]!--- .... |
+riffle | _ | _ | _ | _ |
+chips  | _ | .... .... .... x... | _ | _ |
+
+# B: ii-V with a secondary dominant, brass sings
+pattern B from A
+clav   | . [Gm7] . [Gm7] . . [Gm7] . . [Gm7] . [Gm7] . . [Gm7] . | . [C7] . [C7] . . [C7] . . [C7] . [C7] . . [C7] . | . [Am7] . [Am7] . . [Am7] . . [D7] . [D7] . . [D7] . | . [Gm7] . [Gm7] . . [Gm7] . . [C7] . [C7] . . [C7] . |
+brass  | D5- . Bb4 . C5 D5 . F5- . D5 C5 . Bb4 . | E5--- . . G4 Bb4 C5- E5 . .... | C5- . A4 . C5 E5 . F#5- . D5 C5 . A4 . | Bb4- . G4 . Bb4 D5 . E5--- C5 E5 G5 Bb5 |
+slap   | G1- . G2 . G1?? G1 Bb1 D2 . F2 . G2 . F2 D2 | C2- . C3 . C2?? C2 E2 G2 . Bb2 . C3 . Bb2 G2 | A1- . A2 . A1?? C2 E2 D2- . D3 . C3 A2 F#2 | G1- . G2 . G1?? Bb1 D2 C2- . C3 . Bb2 G2 E2 |
+riffle | _ | _ | _ | _ |
+chips  | _ | _ | _ | _ |
+
+# C: breakdown, chromatic Db7 to C7, congas take over
+pattern C
+clav   | .... .... . [Db7] . [Db7] . . [Db7] . | .... .... . [C7] . [C7] . . [C7] . | .... .... . [Db7] . [Db7] . . [Db7] . | .... .... . [C7] . [C7] . . [C7] . |
+slap   | Db2- . Db3 . Db2?? Db2 . ........ | C2- . C3 . C2?? C2 . ........ | Db2- . Db3 . Db2?? Db2 . ........ | C2- . C3 . C2?? C2 . C2 . E2 . G2 . Bb2 . |
+brass  | _ | _ | _ | .... .... [C7]!- . . [C7]!- . . |
+kick   | x... .... .... .... | % | % | % |
+hat    | ..x. ..x. ..x. ..x. | % | % | % |
+conga  | X.oo X.o. XoXo ..X. | X.o. .oX. X.oo XoXo | X.oo X.o. XoXo ..X. | X.oX .oX. XoXo XXXX |
+riffle | x... .... .... .... | _ | x... .... .... .... | _ |
+chips  | _ | .... .... x... .... | _ | .... .... .... x... |
+
+# T: turnaround hits
+pattern T
+clav   | C5+E5+Bb5 . . C5+E5+Bb5 . . C5+E5+Bb5 . ........ |
+brass  | [C7]!- . [C7]!- . [Db7]!- [C7]!--- .... |
+slap   | C2- . C2- . Db2- C2--- .... |
+kick   | x..x ..x. x... .... |
+hat    | x.x. x.x. x.x. x.x. |
+conga  | .... .... .... XoXo |
+
+play I
+loop A A2 B C T

@@ -1,0 +1,69 @@
+title  double down
+tempo  146
+beats  4
+steps  4
+swing  0
+
+voice lead   pulse   vol=0.5 duty=0.25 rev=0.15 pan=0.1
+voice stab   stab    vol=0.5 center=A4 gate=0.6 pan=-0.2
+voice bass   fmbass  vol=0.9
+voice kick   kick    vol=1
+voice snare  snare   vol=0.65
+voice hat    hat     vol=0.3 pan=0.25
+voice crash  crash   vol=0.5
+voice zap    zap     vol=0.5
+
+# intro: the dealer slams the table
+pattern I
+stab  | [Am]!--- . . [Am]!- . . [Am]!- .... | [E7]!--- . . [E7]!- . . [E7]!- [E7]!--- |
+bass  | A1--- . . A1- . . A1- .... | E1--- . . E1- . . E1- E1 G#1 B1 D2 |
+kick  | x... ..x. ..x. .... | x... ..x. ..x. x.x. |
+snare | _ | .... .... xxxx XXXX |
+crash | X... .... .... .... | _ |
+zap   | .... .... .... x... | _ |
+
+# A: Am F C G, lead harmonised in thirds
+pattern A
+lead  | A4+C5 . C5+E5 . E5+G5- A4+C5- G4+B4 . A4+C5 . C5+E5- B4+D5- | A4+C5- C5+E5- F5+A5- E5+G5 . C5+E5- . . A4+C5- . . | G4+B4 . C5+E5 . E5+G5- G5+B5- F5+A5 . E5+G5 . D5+F5- C5+E5- | B4+D5- . B4+D5 D5+F5- . G5+B5--- . . F5+A5 E5+G5 D5+F5 |
+stab  | [Am]- . [Am] . . [Am]- . . [Am] . [Am]- . . | [F]- . [F] . . [F]- . . [F] . [F]- . . | [C]- . [C] . . [C]- . . [C] . [C]- . . | [G]- . [G] . . [G]- . . [G] . [G]- . . |
+bass  | A1 A1 A2 A1 . A1 A2 A1 A1 A1 A2 A1 . A1 G2 E2 | F1 F1 F2 F1 . F1 F2 F1 F1 F1 F2 F1 . F1 E2 C2 | C2 C2 C3 C2 . C2 C3 C2 C2 C2 C3 C2 . C2 B2 G2 | G1 G1 G2 G1 . G1 G2 G1 G1 G1 G2 G1 . G1 G#1 B1 |
+kick  | x... x... x... x... | % | % | x... x... x... x.xx |
+snare | .... x... .... x... | % | % | .... x... .... x.xx |
+hat   | xoxo xoxo xoxo xoxo | % | % | % |
+crash | X... .... .... .... | _ | _ | _ |
+zap   | _ | _ | _ | .... .... .... x.x. |
+
+# B: F G Am E7, the answer
+pattern B from A
+lead  | C5+E5--- A4+C5- C5+E5- F5+A5--- E5+G5- D5+F5- | D5+F5--- B4+D5- D5+F5- G5+B5--- F5+A5- E5+G5- | E5+G5- C5+E5 E5+G5 A4+C5- C5+E5 . E5+G5 . A5+C6- G5+B5 . E5+G5- | G#4+B4- B4+D5- D5+F5- E5+G#5- G#5+B5--- .... |
+stab  | [F]- . [F] . . [F]- . . [F] . [F]- . . | [G]- . [G] . . [G]- . . [G] . [G]- . . | [Am]- . [Am] . . [Am]- . . [Am] . [Am]- . . | [E7]- . [E7] . . [E7]- . . [E7] . [E7]!--- |
+bass  | F1- F2- F1- F2- F1- F2- E2- C2- | G1- G2- G1- G2- G1- G2- F2- D2- | A1- A2- A1- A2- A1- A2- G2- E2- | E1- E2- E1- E2- G#1- G#2- B1- D2- |
+
+# A2: the hook climbs, then a unison run
+pattern A2 from A
+lead  | E5+G5- . E5+G5 . C5+E5 E5+G5- A5+C6- . G5+B5 E5+G5 . C5+E5- | F5+A5- . F5+A5 . C5+E5 F5+A5- A5+C6- . G5+B5 F5+A5 . C5+E5- | G5+B5- . G5+B5 . E5+G5 G5+B5- C6+E6- . B5+D6 G5+B5 . E5+G5- | D5 E5 F5 G5 A5- G5- F5 E5 D5 B4 D5- G4- |
+
+# C: half-time bridge, pivots on F#7 into the key change
+pattern C
+lead  | A4+C5------- C5+F5------- | B4+D5------- D5+G5------- | B4+E5------- E5+G5------- | F#5+A#5--- E5+A#5--- C#5+E5--- A#4+C#5--- |
+stab  | [F]- . . [F]- . . [F]- . . [F]- . . | [G]- . . [G]- . . [G]- . . [G]- . . | [Em]- . . [Em]- . . [Em]- . . [Em]- . . | [F#7]- . . [F#7]- . . [F#7]- . . [F#7]- . . |
+bass  | F1--- . . F2- F1--- . . F2- | G1--- . . G2- G1--- . . G2- | E1--- . . E2- E1--- . . E2- | F#1- F#2- F#1- F#2- A#1- A#2- C#2- E2- |
+kick  | x... .... ..x. .... | % | % | x... x... x... x.x. |
+snare | .... .... x... .... | % | % | x.x. x.x. xxxx XXXX |
+hat   | x.x. x.x. x.x. x.x. | % | % | % |
+crash | X... .... .... .... | _ | _ | _ |
+zap   | .... .... .... ..x. | % | % | _ |
+
+# T: slide back down to A minor
+pattern T
+lead  | A4+C5- . A4+C5 B4+D5- . B4+D5 C5+E5- . C5+E5 D5+F5-- . | E5+G#5--- . . B4+D5- G#4+B4- E4+G#4- . . . . |
+stab  | [F]- . [F] . . [F]- [G]- . [G] . . [G]- | [E7]!--- . . [E7]- . . [E7]- [E7]!--- |
+bass  | F1 F1 F2 F1 . F1 F2 F1 G1 G1 G2 G1 . G1 G2 G1 | E1- E2- E1- E2- E1 E1 E2 E1 G#1 B1 D2 E2 |
+kick  | x... x... x... x... | x... x... x.x. x.xx |
+snare | .... x... .... x... | .... x... xxxx XXXX |
+hat   | xoxo xoxo xoxo xoxo | % |
+crash | _ | _ |
+zap   | _ | .... .... .... x.x. |
+
+play I
+loop A B A2 C A+2 B+2 T

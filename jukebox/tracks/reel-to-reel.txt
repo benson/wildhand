@@ -1,0 +1,60 @@
+title  reel to reel
+tempo  150
+beats  4
+steps  4
+swing  0
+
+voice lead  square  vol=0.6 pan=-0.15 gate=0.85
+voice arp   pulse   vol=0.3 duty=0.125 arp=0.025 center=C5 gate=0.5 pan=0.3
+voice bass  tri     vol=1 gate=0.8
+voice kick  kick    vol=0.9
+voice snare noise   vol=0.4
+voice reel  reel    vol=0.45 pan=0.25
+voice coin  coin    vol=0.5 pan=-0.25
+voice ding  ding    vol=0.65
+
+pattern I
+lead  | _ | G4 B4 D5 G5 F5 D5 B4 G4 A4 B4 C5 D5 E5 F5 G5 D5 |
+arp   | _ | .. [G7]- .. [G7]- .. [G7]- .. [G7]- |
+bass  | _ | G1- .. D2- .. G1- .. D2- .. |
+kick  | x... .... x... .... | x... x... x... xxxx |
+snare | .... .... .... xxxx | ..x. ..x. ..x. xxxx |
+reel  | x.x. x.x. x.x. x.x. | xxxx xxxx .... .... |
+coin  | _ | _ |
+ding  | _ | _ |
+
+pattern A
+lead  | E5 F5 G5 E5 C6- G5- E5 F5 G5 E5 C5- G4- | D5 E5 F5 D5 B5- G5- D5 E5 F5 D5 G4- B4- | C5 E5 G5 C6 E6- C6- G5 A5 G5 F5 E5- C5- | D5- B4- G4- B4- C5--- .... |
+arp   | .. [C]- .. [C]- .. [C]- .. [C]- | .. [G7]- .. [G7]- .. [G7]- .. [G7]- | .. [C]- .. [C]- .. [C]- .. [C]- | .. [G7]- .. [G7]- .. [C]- .. [C]- |
+bass  | C2- .. G2- .. C2- .. G2- .. | G1- .. D2- .. G1- .. D2- .. | C2- .. E2- .. G2- .. E2- .. | G1- .. D2- .. C2- .. G1- .. |
+kick  | x... x... x... x... | % | % | x... x... x... x.x. |
+snare | ..x. ..x. ..x. ..x. | % | % | ..x. ..x. ..x. .xxx |
+reel  | _ | _ | _ | _ |
+coin  | _ | _ | _ | .... .... x... .... |
+ding  | _ | _ | _ | _ |
+
+pattern B from A
+lead  | A5--- A5 G5 F5 A5 C6--- A5- F5- | G5--- G5 F5 E5 G5 C6--- G5- E5- | F#5 G5 A5 B5 C6 B5 A5 G5 F#5 G5 A5 F#5 D5- D5- | G5 A5 B5 C6 D6 C6 B5 A5 G5 F5 E5 D5 B4- G4- |
+arp   | .. [F]- .. [F]- .. [F]- .. [F]- | .. [C]- .. [C]- .. [C]- .. [C]- | .. [D7]- .. [D7]- .. [D7]- .. [D7]- | .. [G7]- .. [G7]- .. [G7]- .. [G7]- |
+bass  | F2- .. C2- .. F2- .. A2- .. | C2- .. G2- .. C2- .. E2- .. | D2- .. A2- .. D2- .. F#2- .. | G1- .. D2- .. G2- .. B1- .. |
+coin  | _ | _ | _ | .... .... .... x.x. |
+
+pattern C from A
+lead  | C6--- A5--- F5--- .... | C6--- Ab5--- F5--- .... | E5 G5 C6 E6 G6--- E6 C6 G5 E5 C5--- | B5 A5 G5 F5 E5 D5 C5 B4 G4--- B4 D5 F5 G5 |
+arp   | .. [F]- .. [F]- .. [F]- .. [F]- | .. [Fm]- .. [Fm]- .. [Fm]- .. [Fm]- | .. [C]- .. [C]- .. [C]- .. [C]- | .. [G7]- .. [G7]- .. [G7]- .. [G7]- |
+bass  | F2- .. C2- .. F2- .. C2- .. | F2- .. C2- .. F2- .. Ab2- .. | C2- .. G2- .. E2- .. G2- .. | G1- .. B1- .. D2- .. F2- .. |
+reel  | .... .... .... xxxx | .... .... .... xxxx | _ | _ |
+coin  | _ | _ | x... .... .... .... | _ |
+
+pattern T from A
+lead  | G5 F5 G5 A5 G5 F5 G5 A5 B5 A5 B5 C6 D6 C6 B5 A5 | G5------- ........ |
+arp   | .. [G7]- .. [G7]- .. [G7]- .. [G7]- | [G7]------- ........ |
+bass  | G1- .. D2- .. G1- .. D2- .. | G1- .. ............ |
+kick  | x... x... x... x... | X... .... .... .... |
+snare | ..x. ..x. xxxx xxxx | X... .... .... .... |
+reel  | xxxx xxxx xxxx xxxx | _ |
+coin  | _ | .... x.x. x.x. .... |
+ding  | _ | X... .... .... .... |
+
+play I
+loop A B A+5 B+5 C T

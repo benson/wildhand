@@ -1,0 +1,67 @@
+title  hearthvale hustle
+tempo  118
+beats  4
+steps  4
+swing  0
+
+voice vibes   vibes   vol=0.75 pan=-0.15 rev=0.2
+voice whistle whistle vol=0.6 pan=0.15 rev=0.25
+voice arp     square  vol=0.25 arp=0.035 center=B4 gate=0.4 pan=0.3
+voice bass    tri     vol=0.95 gate=0.7
+voice kick    kick    vol=0.8
+voice shaker  shaker  vol=0.35 pan=0.25
+voice rim     rim     vol=0.45 pan=-0.25
+voice fx      blip    vol=0.45
+
+pattern I
+vibes   | [G]--- . [G] . . [G]------- | [D]--- . [D] . . ...... D5- |
+whistle | _ | _ |
+arp     | [G]- [G]- [G]- [G]- [G]- [G]- [G]- [G]- | [D]- [D]- [D]- [D]- [D7]- [D7]- [D7]- [D7]- |
+bass    | G2- G3- D3- G3- G2- G3- D3- G3- | D2- D3- A2- D3- D2- D3- A2- F#2- |
+kick    | x... ..x. x... .... | x... ..x. x... x.x. |
+shaker  | x.xx x.xx x.xx x.xx | % |
+rim     | _ | .... x..x ..x. xxxx |
+fx      | _ | .... .... .... ..x. |
+
+pattern A
+vibes   | D5- G5 . B5- A5 G5- . D5- E5- G5- | B5--- . G5 E5- . G5 B5- A5- G5 . | C6- . B5 A5- G5- E5- . C5 E5- G5- | F#5--- E5- D5- A4--- .. F#4- |
+whistle | _ | _ | _ | _ |
+arp     | [G]- [G]- [G]- [G]- [G]- [G]- [G]- [G]- | [Em]- [Em]- [Em]- [Em]- [Em]- [Em]- [Em]- [Em]- | [C]- [C]- [C]- [C]- [C]- [C]- [C]- [C]- | [D]- [D]- [D]- [D]- [D]- [D]- [D]- [D]- |
+bass    | G2- G3- D3- G3- G2- G3- D3- F#2- | E2- E3- B2- E3- E2- E3- D3- B2- | C2- C3- G2- C3- C2- C3- G2- C#2- | D2- D3- A2- D3- D2- D3- A2- F#2- |
+kick    | x... ..x. x... .... | % | % | x... ..x. x... ..x. |
+shaker  | x.xx x.xx x.xx x.xx | % | % | % |
+rim     | .... x..x ..x. x... | % | % | .... x..x ..x. x.x. |
+fx      | _ | _ | _ | _ |
+
+pattern B from A
+vibes   | B5- . D6 . B5- G5- . D5 G5- B5- . | D#6--- . B5 A5- F#5- D#5- . F#5 A5- | G5- . E5 . G5- B5- E6------ | E6- D6- C6- B5- A5- G5- F#5- A5- |
+arp     | [G]- [G]- [G]- [G]- [G]- [G]- [G]- [G]- | [B7]- [B7]- [B7]- [B7]- [B7]- [B7]- [B7]- [B7]- | [Em]- [Em]- [Em]- [Em]- [Em]- [Em]- [Em]- [Em]- | [C]- [C]- [C]- [C]- [D7]- [D7]- [D7]- [D7]- |
+bass    | G2- G3- D3- G3- G2- G3- D3- A2- | B1- B2- F#2- B2- B1- B2- F#2- D#2- | E2- E3- B2- E3- E2- E3- B2- G2- | C2- C3- G2- C3- D2- D3- A2- B2- |
+fx      | _ | _ | _ | .... .... x.x. .... |
+
+pattern C
+vibes   | E5--- . . . . G5--- . . . . | Eb5--- . . . . G5--- . . . . | D5--- . . . . B4--- . . . . | C5--- . . . . F#5--- . . . . |
+whistle | G5------- E5--- C5--- | Eb5------- G5--- Eb5--- | D5--- . B4 D5- G5------- | A5--- G5- E5- F#5--- A5- D5- |
+arp     | [Cmaj7]- [Cmaj7]- [Cmaj7]- [Cmaj7]- [Cmaj7]- [Cmaj7]- [Cmaj7]- [Cmaj7]- | [Cm]- [Cm]- [Cm]- [Cm]- [Cm6]- [Cm6]- [Cm6]- [Cm6]- | [G/B]- [G/B]- [G/B]- [G/B]- [G]- [G]- [G]- [G]- | [Am7]- [Am7]- [Am7]- [Am7]- [D7]- [D7]- [D7]- [D7]- |
+bass    | C2--- . C2 E2- G2--- . G2 E2- | C2--- . C2 Eb2- G2--- . G2 Eb2- | B1--- . B1 D2- G2--- . G2 B1- | A1--- A2--- D2--- F#2--- |
+kick    | x... .... x... .... | % | % | x... .... x... x.x. |
+shaker  | x.x. x.x. x.x. x.x. | % | % | x.xx x.xx x.xx xxxx |
+rim     | _ | .... .... .... x... | _ | .... x... x... xxxx |
+fx      | _ | _ | _ | _ |
+
+pattern A2 from A
+vibes   | _ | ........ G5 . B5 . D6--- | _ | ........ A5 . F#5 . D5--- |
+whistle | D5- G5 . B5- A5 G5- . D5- E5- G5- | B5--- . G5 E5- . G5 B5- A5- G5 . | C6- . B5 A5- G5- E5- . C5 E5- G5- | F#5--- E5- D5- A4--- .. F#4- |
+
+pattern T from A
+vibes   | C6- B5- A5- G5- E5- C5- A4- C5- | D5- . F#5 . A5- C6- . D6---- . |
+whistle | _ | _ |
+arp     | [Am7]- [Am7]- [Am7]- [Am7]- [Am7]- [Am7]- [Am7]- [Am7]- | [D7]- [D7]- [D7]- [D7]- [D7]- [D7]- [D7]- [D7]- |
+bass    | A1- A2- E2- A2- A1- A2- E2- G2- | D2- D3- A2- D3- D2- C3- B2- A2- |
+kick    | x... ..x. x... .... | x... ..x. x.x. x.x. |
+shaker  | x.xx x.xx x.xx x.xx | % |
+rim     | .... x..x ..x. x... | .... x..x xxx. xxxx |
+fx      | _ | .... .... .... x.x. |
+
+play I
+loop A B C A2 T

@@ -1,0 +1,75 @@
+title  full house
+tempo  140
+beats  4
+steps  4
+swing  0
+
+voice lead   lead    vol=0.7 pan=-0.1
+voice stab   stab    vol=0.5 center=A4 pan=0.2
+voice bass   synbass vol=0.9 gate=0.8
+voice kick   kick    vol=0.95
+voice snare  snare   vol=0.65
+voice hat    hat     vol=0.35 pan=0.25
+voice tomhi  tomhi   vol=0.55 pan=0.3
+voice tomlo  tomlo   vol=0.6 pan=-0.3
+
+pattern I
+lead  | _ | ........ A4- B4- C#5- E5- |
+stab  | [A]- . [A] . [A]- .. [A]- . [A]- .. | [A7]- . [A7] . [A7]- .. [A7]- . [A7]- .. |
+bass  | A1- A1- A2- A1- A1- A1- A2- A1- | % |
+kick  | x... ..x. x... ..x. | x... ..x. x... .... |
+snare | .... x... .... x... | .... x... .... xxxx |
+hat   | x.x. x.x. x.x. x.x. | % |
+tomhi | _ | .... .... xxx. .... |
+tomlo | _ | .... .... ...x .... |
+
+pattern A
+lead  | F#5- A5- D6--- A5 F#5- A5- B5- A5 | F#5--- D5- B4- . D5 F#5- B5--- | G5- B5- D6--- E6 D6- B5- G5- B5 | A5------- E5- F#5- G5- A5- |
+stab  | [D]- . [D] . [D]- .. [D]- . [D]- .. | [Bm]- . [Bm] . [Bm]- .. [Bm]- . [Bm]- .. | [G]- . [G] . [G]- .. [G]- . [G]- .. | [A]- . [A] . [A]- .. [A]- . [A]- .. |
+bass  | D2- D2- D3- D2- D2- D2- D3- C#2- | B1- B1- B2- B1- B1- B1- B2- A1- | G1- G1- G2- G1- G1- G1- G2- G#1- | A1- A1- A2- A1- A1- A2- E2- C#2- |
+kick  | x... ..x. x... ..x. | % | % | x... ..x. x... .... |
+snare | .... x... .... x... | % | % | .... x... .... .... |
+hat   | x.x. x.x. x.x. x.x. | % | % | x.x. x.x. .... .... |
+tomhi | _ | _ | _ | .... .... xxx. .... |
+tomlo | _ | _ | _ | .... .... ...x xxxx |
+
+pattern B from A
+lead  | B5--- . B5 C#6- D6--- B5- G5- | C#6--- . C#6 D6- E6--- C#6- A5- | A5- C#6- F#6--- E6 C#6- A5- F#5- E5 | F#5------- . D5 E5 F#5 A5--- |
+stab  | [G]- . [G] . [G]- .. [G]- . [G]- .. | [A]- . [A] . [A]- .. [A]- . [A]- .. | [F#m]- . [F#m] . [F#m]- .. [F#m]- . [F#m]- .. | [Bm]- . [Bm] . [Bm]- .. [Bm]- . [Bm]- .. |
+bass  | G1- G1- G2- G1- G1- G1- G2- G#1- | A1- A1- A2- A1- A1- A1- A2- G#1- | F#1- F#1- F#2- F#1- F#1- F#1- F#2- A#1- | B1- B1- B2- B1- B1- B2- A2- C#2- |
+hat   | xxxx x.xx xxxx x.xx | % | % | xxxx x.xx .... .... |
+
+pattern A2 from A
+lead  | F#5- A5- D6--- A5 F#5- A5- B5- A5 | F#5--- D5- B4- . D5 F#5- B5--- | G5- B5- D6--- E6 F#6- E6- D6- B5 | A5--- E5- A5- C#6--- E6--- |
+snare | .... x... .... x... | % | % | .... x... .... ..xx |
+
+pattern C from A
+lead  | F5- Bb5- D6------- C6- Bb5- | G5- C6- E6------- D6- C6- | D6--- A5- F#5- D6--- E6- F#6- | F#6------- ........ |
+stab  | [Bb]--- [Bb]--- [Bb]--- [Bb]--- | [C]--- [C]--- [C]--- [C]--- | [D]- . [D] . [D]- .. [D]- . [D]- .. | [D]------- ........ |
+bass  | Bb1- Bb1- Bb2- Bb1- Bb1- Bb1- Bb2- B1- | C2- C2- C3- C2- C2- C2- C3- C#2- | D2- D2- D3- D2- D2- D2- D3- D2- | D2- D3- C3- A2- F#2- E2- D2- C#2- |
+kick  | x... x... x... x... | % | % | x... x... x... x... |
+snare | .... x... .... x... | % | % | .... x... xxxx XXXX |
+hat   | xxxx xxxx xxxx xxxx | % | % | xxxx xxxx .... .... |
+tomhi | _ | _ | _ | _ |
+tomlo | _ | _ | _ | _ |
+
+pattern D from A
+lead  | B5- . B5 A5- F#5- D5--- .... | G5- . G5 F#5- D5- B4--- .... | E5- G5- B5- E6--- D6- B5- G5- | A#5--- F#5--- C#6--- A#5--- |
+stab  | ........ [Bm]- . [Bm] .... | ........ [G]- . [G] .... | [Em]- . [Em] . [Em]- .. [Em]- . [Em]- .. | [F#]- . [F#] . [F#]- .. [F#]- . [F#]- .. |
+bass  | B1- B1- B2- B1- B1- B1- B2- A1- | G1- G1- G2- G1- G1- G1- G2- F#1- | E1- E1- E2- E1- E1- E1- E2- F1- | F#1- F#1- F#2- F#1- F#1- F#1- F#2- F#2- |
+kick  | x... .... ..x. .... | % | x... ..x. x... ..x. | x... ..x. x... .... |
+snare | .... .... x... .... | % | .... x... .... x... | .... x... .... .... |
+hat   | x.x. x.x. x.x. x.x. | % | % | x.x. x.x. .... .... |
+
+pattern T
+lead  | G5- B5- D6- G6--- F#6- E6- D6- | C#6- . C#6 . E6- . G6- A6----- |
+stab  | [G]- . [G] . [G]- .. [G]- . [G]- .. | [A7]- . [A7] . [A7]- .. [A7]--- ... |
+bass  | G1- G1- G2- G1- G1- G1- G2- G#1- | A1- A1- A2- A1- A1- A2- G2- C#2- |
+kick  | x... ..x. x... ..x. | x... x... x.x. x.x. |
+snare | .... x... .... x... | x... x... xxxx xxxx |
+hat   | x.x. x.x. x.x. x.x. | _ |
+tomhi | _ | .... xx.. xx.. .... |
+tomlo | _ | ..xx ..xx ..xx XXXX |
+
+play I
+loop A B A2 C D T

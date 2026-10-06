@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>wildhand jukebox</title>
+  <meta name="description" content="ten tracks for wildhand, written as plain-text scores and played by a web audio synth">
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --night: #1b1430; --night2: #2b2147; --night3: #3a2d5e; --paper: #fbf3e4; --dim: #b9aecf;
+      --gold: #ffcf5a; --chips: #2f8cff; --mult: #ff4d5e; --ember: #ff6a3d; --tide: #3db8ff; --grove: #6fdc5a; --volt: #ffd23d;
+      --mono: 'JetBrains Mono', ui-monospace, monospace;
+    }
+    * { box-sizing: border-box; scrollbar-width: none; }
+    *::-webkit-scrollbar { display: none; }
+    html, body { margin: 0; background: var(--night); color: var(--paper); font-family: 'Fredoka', system-ui, sans-serif; text-transform: lowercase; }
+    body { min-height: 100vh; }
+    main { width: min(1120px, 100%); margin: 0 auto; padding: 22px 16px 60px; }
+    h1 { margin: 0; font-size: clamp(30px, 5vw, 46px); font-weight: 700; letter-spacing: .5px; color: var(--paper); text-shadow: 0 4px 0 #120d22; }
+    h1 .w { color: var(--gold); }
+    h2 { font-size: 20px; margin: 0 0 10px; font-weight: 600; }
+    button { font: inherit; text-transform: lowercase; cursor: pointer; color: inherit; }
+    .panel { background: var(--night2); border-radius: 16px; padding: 14px; }
+
+    .stage { margin-top: 14px; border-radius: 16px; overflow: hidden; background: #120d22; }
+    #scene { display: block; width: 100%; height: auto; aspect-ratio: 320 / 110; image-rendering: pixelated; }
+
+    .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px; }
+    .now { flex: 1 1 260px; min-width: 0; }
+    .now b { font-size: 22px; font-weight: 600; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .now span { color: var(--dim); font-size: 14px; font-family: var(--mono); }
+    .btn { border: 0; border-radius: 12px; padding: 10px 16px; background: var(--night3); font-weight: 600; font-size: 16px; }
+    .btn:hover { background: #4a3b75; }
+    .btn.primary { background: var(--gold); color: #2a2135; min-width: 110px; }
+    .btn.primary:hover { background: #ffd977; }
+    .btn.on { background: var(--paper); color: #2a2135; }
+    .btn kbd { font-family: var(--mono); font-size: 11px; opacity: .6; margin-left: 4px; }
+    .vol { display: flex; align-items: center; gap: 8px; color: var(--dim); font-size: 14px; }
+    input[type=range] { accent-color: var(--gold); width: 110px; }
+
+    .cols { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 14px; margin-top: 14px; }
+    .tracks { list-style: none; margin: 0; padding: 6px; display: flex; flex-direction: column; gap: 2px; }
+    .tracks button { width: 100%; text-align: left; border: 0; background: none; border-radius: 10px; padding: 8px 10px; display: grid; grid-template-columns: 22px 1fr auto; gap: 8px; align-items: baseline; }
+    .tracks button:hover { background: var(--night3); }
+    .tracks button.cur { background: var(--paper); color: #2a2135; }
+    .tracks .n { font-family: var(--mono); font-size: 12px; opacity: .55; }
+    .tracks .m { font-family: var(--mono); font-size: 12px; opacity: .6; }
+    .tracks .t { font-weight: 600; }
+
+    .voices { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+    .voice { border: 0; border-radius: 999px; padding: 5px 12px 5px 8px; background: var(--night3); font-size: 14px; display: flex; align-items: center; gap: 7px; transition: background .08s; }
+    .voice i { width: 12px; height: 12px; border-radius: 50%; background: var(--c); transition: transform .08s; }
+    .voice small { font-family: var(--mono); font-size: 11px; opacity: .6; }
+    .voice.hit i { transform: scale(1.45); }
+    .voice.muted { opacity: .38; }
+    .voice.muted b { text-decoration: line-through; }
+    #roll { display: block; width: 100%; border-radius: 10px; background: #150f27; cursor: pointer; }
+    .hint { color: var(--dim); font-size: 13px; margin-top: 8px; }
+
+    .edit { margin-top: 14px; }
+    .edit .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+    .edit .row h2 { margin: 0 auto 0 0; }
+    textarea { width: 100%; height: 340px; resize: vertical; border: 0; border-radius: 10px; padding: 12px; background: #150f27; color: var(--paper); font: 13px/1.55 var(--mono); text-transform: none; tab-size: 4; white-space: pre; overflow: auto; }
+    textarea:focus { outline: 2px solid var(--gold); }
+    .errors { margin: 8px 0 0; padding: 0; list-style: none; font-family: var(--mono); font-size: 13px; color: #ff8a95; text-transform: none; }
+    .ok { color: var(--grove); font-family: var(--mono); font-size: 13px; margin-top: 8px; }
+
+    .guide { margin-top: 14px; }
+    .guide .row { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }
+    .guide .row h2 { margin: 0 auto 0 0; }
+    .doc { font-size: 15px; line-height: 1.55; color: #e9e1f5; }
+    .doc h1 { display: none; }
+    .doc h2 { font-size: 17px; margin: 22px 0 6px; color: var(--gold); }
+    .doc code { font-family: var(--mono); font-size: 12.5px; background: #150f27; padding: 1px 5px; border-radius: 5px; text-transform: none; }
+    .doc pre { background: #150f27; padding: 12px; border-radius: 10px; overflow: auto; }
+    .doc pre code { padding: 0; background: none; }
+    .doc table { border-collapse: collapse; }
+    .doc td, .doc th { padding: 4px 12px 4px 0; text-align: left; vertical-align: top; }
+    .doc th { color: var(--dim); font-weight: 500; }
+    .doc ul { padding-left: 18px; }
+    .doc p, .doc li { text-transform: none; }
+
+    @media (max-width: 760px) {
+      .cols { grid-template-columns: minmax(0, 1fr); }
+      .tracks { display: grid; grid-template-columns: 1fr 1fr; }
+      .tracks .m { display: none; }
+      .btn kbd { display: none; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>wild<span class="w">hand</span> jukebox</h1>
+
+  <div class="stage"><canvas id="scene" width="320" height="110"></canvas></div>
+
+  <div class="bar">
+    <div class="now"><b id="title">…</b><span id="meta"></span></div>
+    <button class="btn primary" id="play">play <kbd>space</kbd></button>
+    <button class="btn" id="restart">restart</button>
+    <button class="btn on" id="loop" aria-pressed="true">loop</button>
+    <label class="vol">vol <input type="range" id="vol" min="0" max="1" step="0.01" value="0.8"></label>
+  </div>
+
+  <div class="cols">
+    <ol class="tracks panel" id="tracks"></ol>
+    <div class="panel">
+      <div class="voices" id="voices"></div>
+      <canvas id="roll" height="260"></canvas>
+      <div class="hint">click a voice to mute it · click the roll to jump there</div>
+    </div>
+  </div>
+
+  <section class="edit panel">
+    <div class="row">
+      <h2>score</h2>
+      <button class="btn" id="revert">revert</button>
+      <button class="btn primary" id="apply">play this score</button>
+    </div>
+    <textarea id="src" spellcheck="false" aria-label="score"></textarea>
+    <ul class="errors" id="errors"></ul>
+  </section>
+
+  <section class="guide panel">
+    <div class="row">
+      <h2>the score format</h2>
+      <button class="btn" id="prompt">copy llm prompt</button>
+    </div>
+    <div class="doc" id="doc"></div>
+  </section>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
