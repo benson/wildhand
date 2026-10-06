@@ -305,7 +305,7 @@ button { font-family: inherit; text-transform: lowercase; cursor: pointer; }
   .charms { top: auto; bottom: calc(var(--card-h) * 2 + 120px); }
   .battle .enemy { padding: 10px; }
   .youbar, .deckcount { display: none; }
-  .hud-br { bottom: auto; right: auto; left: 14px; top: 100px; }
+  .hud-br { bottom: auto; right: auto; left: 14px; top: 140px; flex-wrap: wrap; max-width: 70vw; }
   .prompt { bottom: 190px; white-space: normal; text-align: center; width: max-content; max-width: 86vw; }
   .chat { bottom: 190px; }
 }
@@ -328,3 +328,5 @@ body.in-battle .mobile-btns, body.in-battle .joystick { display: none; }
 @keyframes zoneb { 0% { opacity: 0; transform: translate(-50%, 10px); } 12% { opacity: 1; transform: translate(-50%, 0); } 80% { opacity: 1; } 100% { opacity: 0; } }
 .worldmap { display: flex; justify-content: center; }
 .worldmap canvas { width: min(78vh, 100%); height: auto; aspect-ratio: 1; border-radius: 14px; border: 2px solid rgba(255,255,255,.15); background: #14507f; }
+
+@media (pointer: coarse) { .hud-br [data-b=mount] { display: none; } }

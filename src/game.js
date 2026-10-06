@@ -443,6 +443,7 @@ export class Game {
       sfx,
       title: `${hub.zone.hubName} merchant`,
       maxRarity: hub.zone.levels[0] >= 9 ? 3 : 2,
+      priceMult: 1 + hub.zone.levels[0] / 8,
       onChange: () => { this.save(); if (!document.querySelector('.modal-bg')) this.state = 'explore'; },
     });
   }

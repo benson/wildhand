@@ -94,7 +94,7 @@ export function rewardScreen(profile, enemy, gold, xp, onDone, rng = Math.random
   const enh = randomEnhancedCard(rng);
   options.push({ kind: 'card', card: enh, label: `${enh.enh} ${enh.rank} of ${enh.el}`, desc: ENHANCE[enh.enh].text });
   const charmChance = enemy.boss ? 1 : spec.tier >= 2 ? 0.7 : 0.3;
-  const ck = rng() < charmChance ? randomCharm(profile.charms, rng, enemy.boss || spec.tier >= 3 ? 3 : 2) : null;
+  const ck = rng() < charmChance ? (randomCharm(profile.charms, rng, enemy.boss || spec.tier >= 3 ? 3 : 2, enemy.boss ? 2 : 1) || randomCharm(profile.charms, rng)) : null;
   if (ck) options.push({ kind: 'charm', key: ck, label: CHARMS[ck].name, desc: CHARMS[ck].text });
   else {
     const e2 = randomEnhancedCard(rng);
@@ -136,7 +136,8 @@ function shopStock(profile, maxRarity = 3, rng = Math.random) {
   return { charms, tome, packs: 2 };
 }
 
-export function shopScreen(profile, state, { onChange, sfx, title = 'the wandering merchant', maxRarity = 3 }) {
+export function shopScreen(profile, state, { onChange, sfx, title = 'the wandering merchant', maxRarity = 3, priceMult = 1 }) {
+  const price = (n) => Math.round(n * priceMult);
   if (!state.stock) state.stock = shopStock(profile, maxRarity);
   const m = modal('<div class="shop"></div>', { onClose: onChange });
   const render = () => {
@@ -150,10 +151,10 @@ export function shopScreen(profile, state, { onChange, sfx, title = 'the wanderi
       <h3>charms</h3><div class="choices charms-sale"></div>
       <h3>packs & services</h3>
       <div class="choices services">
-        <div class="choice"><div class="charm" style="width:86px;height:86px;font-size:40px">🎴</div><b>elemental pack</b><div class="desc">choose 1 of 3 enhanced cards</div><button class="btn small" data-buy="pack" ${s.packs <= 0 ? 'disabled' : ''}>4 gold${s.packs <= 0 ? ' · sold out' : ''}</button></div>
-        <div class="choice"><div class="charm" style="width:86px;height:86px;font-size:40px">📜</div><b>tome of ${HANDS[s.tome].name}</b><div class="desc">level up to ${lv + 1}: ${nb.chips} chips × ${nb.mult} mult</div><button class="btn small" data-buy="tome">5 gold</button></div>
-        <div class="choice"><div class="charm" style="width:86px;height:86px;font-size:40px">🕯️</div><b>cleanse</b><div class="desc">remove a card from your deck (${profile.deck.length})</div><button class="btn small" data-buy="cleanse">3 gold</button></div>
-        <div class="choice"><div class="charm" style="width:86px;height:86px;font-size:40px">🔁</div><b>reroll charms</b><div class="desc">new stock</div><button class="btn small" data-buy="reroll">2 gold</button></div>
+        <div class="choice"><div class="charm" style="width:86px;height:86px;font-size:40px">🎴</div><b>elemental pack</b><div class="desc">choose 1 of 3 enhanced cards</div><button class="btn small" data-buy="pack" ${s.packs <= 0 ? 'disabled' : ''}>${price(4)} gold${s.packs <= 0 ? ' · sold out' : ''}</button></div>
+        <div class="choice"><div class="charm" style="width:86px;height:86px;font-size:40px">📜</div><b>tome of ${HANDS[s.tome].name}</b><div class="desc">level up to ${lv + 1}: ${nb.chips} chips × ${nb.mult} mult</div><button class="btn small" data-buy="tome">${price(5)} gold</button></div>
+        <div class="choice"><div class="charm" style="width:86px;height:86px;font-size:40px">🕯️</div><b>cleanse</b><div class="desc">remove a card from your deck (${profile.deck.length})</div><button class="btn small" data-buy="cleanse">${price(3)} gold</button></div>
+        <div class="choice"><div class="charm" style="width:86px;height:86px;font-size:40px">🔁</div><b>reroll charms</b><div class="desc">new stock</div><button class="btn small" data-buy="reroll">${price(2)} gold</button></div>
       </div>`;
     const cs = el.querySelector('.charms-sale');
     if (!s.charms.length) cs.innerHTML = '<div class="desc">sold out</div>';
@@ -164,9 +165,9 @@ export function shopScreen(profile, state, { onChange, sfx, title = 'the wanderi
       vis.style.width = '86px'; vis.style.height = '86px'; vis.style.fontSize = '40px';
       const full = profile.charms.length >= profile.maxCharms;
       c.append(vis);
-      c.insertAdjacentHTML('beforeend', `<b>${CHARMS[k].name}</b><div class="desc">${CHARMS[k].text}</div><button class="btn small" ${full ? 'disabled' : ''}>${full ? 'charms full' : `${CHARMS[k].cost} gold`}</button>`);
+      c.insertAdjacentHTML('beforeend', `<b>${CHARMS[k].name}</b><div class="desc">${CHARMS[k].text}</div><button class="btn small" ${full ? 'disabled' : ''}>${full ? 'charms full' : `${price(CHARMS[k].cost)} gold`}</button>`);
       c.querySelector('button').onclick = () => {
-        if (!buy(CHARMS[k].cost)) return;
+        if (!buy(price(CHARMS[k].cost))) return;
         profile.charms.push(k);
         s.charms.splice(i, 1);
         render();
@@ -192,27 +193,27 @@ export function shopScreen(profile, state, { onChange, sfx, title = 'the wanderi
   const service = (kind) => {
     const s = state.stock;
     if (kind === 'pack' && s.packs > 0) {
-      if (!buy(4)) return;
+      if (!buy(price(4))) return;
       s.packs--;
       sfx?.('pack');
       const cards = [randomEnhancedCard(), randomEnhancedCard(), randomEnhancedCard()];
       pickCard('open pack', 'choose one card to keep', cards, (c) => { profile.deck.push(c); onChange?.(); render(); });
     } else if (kind === 'tome') {
-      if (!buy(5)) return;
+      if (!buy(price(5))) return;
       profile.handLevels[s.tome] = (profile.handLevels[s.tome] || 1) + 1;
       s.tome = pick(HAND_ORDER.slice(3));
       render();
     } else if (kind === 'cleanse') {
       if (profile.deck.length <= 20) { flash('your deck is already lean (20 cards min)'); return; }
-      if (profile.gold < 3) { flash('not enough gold'); return; }
+      if (profile.gold < price(3)) { flash('not enough gold'); return; }
       pickCard('cleanse', 'choose a card to remove', profile.deck, (c) => {
-        if (!buy(3)) return;
+        if (!buy(price(3))) return;
         profile.deck = profile.deck.filter((x) => x.id !== c.id);
         onChange?.();
         render();
       }, true);
     } else if (kind === 'reroll') {
-      if (!buy(2)) return;
+      if (!buy(price(2))) return;
       s.charms = shopStock(profile, maxRarity).charms;
       render();
     }

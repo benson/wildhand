@@ -96,8 +96,8 @@ export function randomEnhancedCard(rng = Math.random) {
   const enh = pick(Object.keys(ENHANCE), rng);
   return makeCard(el, rank, { enh });
 }
-export function randomCharm(owned, rng = Math.random, maxRarity = 3) {
-  const pool = Object.keys(CHARMS).filter((k) => !owned.includes(k) && CHARMS[k].rarity <= maxRarity);
+export function randomCharm(owned, rng = Math.random, maxRarity = 3, minRarity = 1) {
+  const pool = Object.keys(CHARMS).filter((k) => !owned.includes(k) && CHARMS[k].rarity <= maxRarity && CHARMS[k].rarity >= minRarity);
   if (!pool.length) return null;
   // weight common charms higher
   const weighted = pool.flatMap((k) => Array(4 - CHARMS[k].rarity).fill(k));

@@ -8,11 +8,11 @@ import { createPet } from './character.js';
 const SEG = 11; // seconds per wander segment
 const MOVE = 4.5; // seconds spent walking in each segment
 
-export const HP_GROWTH = 1.36;
+export const HP_GROWTH = 1.27;
 export function enemyStats(species, level, boss = false) {
   const s = CREATURES[species];
   return {
-    hp: Math.round(70 * s.hp * Math.pow(HP_GROWTH, level - 1) * (boss ? 3.2 : 1)),
+    hp: Math.round(70 * s.hp * Math.pow(HP_GROWTH, level - 1) * (boss ? 2.4 : 1)),
     atk: Math.max(2, Math.round((2.5 + 1.25 * level) * s.atk * (boss ? 1.35 : 1))),
   };
 }
