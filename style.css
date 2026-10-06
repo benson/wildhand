@@ -266,10 +266,10 @@ button[data-tip] { cursor: pointer; }
 .tip .r { font-size: 11px; opacity: .6; }
 .handwrap { position: fixed; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; align-items: center; padding-bottom: 26px; background: linear-gradient(to top, rgba(27,20,48,.75), rgba(27,20,48,0)); }
 .table { display: flex; gap: 10px; min-height: calc(var(--card-h) + 10px); align-items: center; justify-content: center; margin-bottom: 10px; }
-.hand-row { display: flex; justify-content: center; align-items: flex-start; height: calc(var(--card-h) + 20px); padding-top: 4px; }
+.hand-row { display: flex; justify-content: center; align-items: flex-start; height: calc(var(--card-h) + 56px); padding-top: 40px; }
 .hand-row .card { margin: 0 calc(var(--card-w) * -0.08); }
 .hand-row .card.sel { transform: translateY(-28px) rotate(0deg) !important; }
-.hand-row .card.sel .face { box-shadow: 0 14px 26px rgba(20,10,40,.5), 0 0 0 3px var(--gold), inset 0 0 0 calc(var(--card-w) * 0.03) var(--el); }
+.hand-row .card.sel .face { box-shadow: 0 0 0 3px var(--gold), inset 0 0 0 calc(var(--card-w) * 0.03) var(--el); }
 .table .card.pop { animation: cardpop .32s; }
 .table .card.dim { filter: brightness(.55) saturate(.6); transform: scale(.92); }
 @keyframes cardpop { 40% { transform: scale(1.18) rotate(-4deg); } }
