@@ -248,8 +248,10 @@ export function deckScreen(profile, { onChange, sfx } = {}) {
     profile.charms.forEach((k, i) => {
       const c = charmEl(k);
       c.style.cursor = 'pointer';
-      c.onclick = () => {
-        if (!confirm(`sell ${CHARMS[k].name} for ${Math.floor(CHARMS[k].cost / 2)} gold?`)) return;
+      c.onclick = async () => {
+        hideTip();
+        const ok = await confirmScreen(`sell ${CHARMS[k].name}?`, `you'll get ${Math.floor(CHARMS[k].cost / 2)} gold back.`, 'sell', 'keep');
+        if (!ok) return;
         profile.charms.splice(i, 1);
         profile.gold += Math.floor(CHARMS[k].cost / 2);
         sfx?.('coin');

@@ -9,14 +9,42 @@ loader.setMeshoptDecoder(MeshoptDecoder);
 const cache = new Map();
 
 export function loadGLTF(url) {
-  if (!cache.has(url)) cache.set(url, loader.loadAsync(url));
+  if (!cache.has(url)) cache.set(url, url.endsWith('.json') ? loadPacked(url) : loader.loadAsync(url));
   return cache.get(url);
 }
 
+// gltf json with the binary chunk inlined as base64 (field __bin). rebuilt into a
+// .glb in memory so nothing is fetched except same-origin files.
+async function loadPacked(url) {
+  const json = await (await fetch(url)).json();
+  const raw = atob(json.__bin || '');
+  delete json.__bin;
+  const bin = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) bin[i] = raw.charCodeAt(i);
+  const enc = new TextEncoder().encode(JSON.stringify(json));
+  const jsonLen = Math.ceil(enc.length / 4) * 4;
+  const binLen = Math.ceil(bin.length / 4) * 4;
+  const total = 12 + 8 + jsonLen + (bin.length ? 8 + binLen : 0);
+  const buf = new ArrayBuffer(total);
+  const dv = new DataView(buf);
+  const u8 = new Uint8Array(buf);
+  dv.setUint32(0, 0x46546c67, true); dv.setUint32(4, 2, true); dv.setUint32(8, total, true);
+  dv.setUint32(12, jsonLen, true); dv.setUint32(16, 0x4e4f534a, true);
+  u8.fill(0x20, 20, 20 + jsonLen); u8.set(enc, 20);
+  if (bin.length) {
+    const o = 20 + jsonLen;
+    dv.setUint32(o, binLen, true); dv.setUint32(o + 4, 0x004e4942, true);
+    u8.set(bin, o + 8);
+  }
+  return loader.parseAsync(buf, url.slice(0, url.lastIndexOf('/') + 1));
+}
+
 export const CHAR_MODELS = ['knight', 'barbarian', 'mage', 'rogue', 'rogue_hooded'];
-export const charUrl = (m) => `assets/models/chars/${m}.glb`;
-export const petUrl = (m) => `assets/models/pets/${m}.glb`;
-export const natureUrl = (m) => `assets/models/nature/${m}.glb`;
+// hosts that can't serve .glb get gltf-json copies instead (see window.WILDHAND_MODEL_EXT)
+const EXT = window.WILDHAND_MODEL_EXT || 'glb';
+export const charUrl = (m) => `assets/models/chars/${m}.${EXT}`;
+export const petUrl = (m) => `assets/models/pets/${m}.${EXT}`;
+export const natureUrl = (m) => `assets/models/nature/${m}.${EXT}`;
 
 // clone a skinned model (characters, pets) with its own skeleton
 export async function instantiateSkinned(url) {
