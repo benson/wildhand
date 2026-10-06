@@ -1,8 +1,23 @@
 # wildhand
 
-a 3d open-world creature card battler that runs in the browser. walk a stylized island, run into roaming creatures, and fight them with balatro-style poker hands (chips × mult). bind the creatures you beat into your deck, collect charms, and duel other players.
+a 3d open-world creature card battler that runs in the browser. explore an 8km continent across eight zones, run into roaming creatures, and fight them with balatro-style poker hands (chips × mult). bind the creatures you beat into your deck, collect charms, level up to 30, take down zone bosses, and duel other players.
 
 **play:** https://wildhand.bensonperry.com
+
+## the continent
+
+| zone | levels | outpost | boss |
+| --- | --- | --- | --- |
+| hearthvale (meadows) | 1–5 | hearthtown | old bristle |
+| whisperwood (old forest) | 5–10 | mossgate | the drowsing king |
+| coral reach (palm coast) | 6–11 | driftmoor | captain pincer |
+| saltmarsh (swamp) | 9–14 | reedwatch | the mirefather |
+| sunscorch (desert mesas) | 12–17 | dustwell | the dune colossus |
+| frostpeak (snow mountains) | 16–22 | cold hollow | hoarfang |
+| ember caldera (volcano, lava) | 20–26 | ashfall | the pyrelord |
+| the shattered highlands (ruins) | 24–30 | last light | the last warden |
+
+every outpost has a hearth (heal), a merchant (stock and prices scale with the zone) and a waystone. touch a waystone to attune it, then travel between attuned waystones from any of them. press `r` to ride an elk, `m` for the world map.
 
 ## how it plays
 
@@ -16,7 +31,8 @@ a 3d open-world creature card battler that runs in the browser. walk a stylized 
 ## tech
 
 - plain es modules with no build step. three.js r170 loads from jsdelivr through an import map.
-- the island is procedural and seeded, so every client generates the same world. it has gpu instanced grass (~160k wind-animated blades that wrap around the player), fluffy alpha-card foliage with spherical normals, a stylized water shader (depth tint, shoreline foam bands, sun glints), a gradient sky with clouds, soft shadows, bloom and a color grade.
+- the continent is procedural and seeded, so every client generates the same world. it streams in 128m chunks generated in web workers, with four levels of detail out to ~1.3km, merged per-chunk trees and props, and colliders and creature spawns that load and unload with their chunks. it has gpu instanced grass (~160k wind-animated blades that wrap around the player), fluffy alpha-card foliage with spherical normals, a stylized water shader (depth tint, shoreline foam bands, sun glints), a gradient sky with clouds, soft shadows, bloom and a color grade.
+- zones blend at their borders and change fog, sky, ambient light and particles (pollen, fireflies, snow, embers, dust); the caldera's low ground is lava and the marsh has murky pools.
 - **multiplayer** is serverless webrtc via [trystero](https://github.com/dmotz/trystero), using public nostr relays only for signaling. the bundle is vendored in `vendor/trystero-nostr.js`. creature positions are a pure function of a seed and the wall clock, so everyone sees the same roaming creatures without a server. defeats are broadcast to peers. because there is no server, progress is saved in localStorage and duels are trust-based.
 - `?q=low` forces the low graphics preset (the default on phones).
 
