@@ -103,6 +103,10 @@ export const ZONES = [
 
 export const ZONE_BY_ID = Object.fromEntries(ZONES.map((z) => [z.id, z]));
 
+// each zone opens once the previous zone's boss has fallen
+export const zoneGate = (i) => (i > 0 ? ZONES[i - 1] : null);
+export const zoneOpen = (profile, i) => !zoneGate(i) || (profile.bosses || []).includes(zoneGate(i).id);
+
 // dirt roads between hubs
 export const ROADS = [
   ['hearthvale', 'whisperwood'], ['hearthvale', 'coralreach'], ['hearthvale', 'sunscorch'],

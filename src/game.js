@@ -2,8 +2,8 @@
 import * as THREE from 'three';
 import { createRenderer, createComposer, pickQuality } from './render.js';
 import { World } from './world/world.js';
-import { ZONES, ZONE_BY_ID, CONTINENT_R } from './world/zones.js';
-import { roadSegments, height as genHeight } from './world/gen.js';
+import { ZONES, ZONE_BY_ID, CONTINENT_R, zoneOpen, zoneGate } from './world/zones.js';
+import { roadSegments, height as genHeight, zoneIndexAt } from './world/gen.js';
 import { ensureProgress, grantXp, xpFor, xpToNext, MAX_LEVEL } from './cards/progress.js';
 import { Player, Input } from './entities/player.js';
 import { Creatures, enemyStats } from './entities/creatures.js';
@@ -128,6 +128,7 @@ export class Game {
     let best = null, bd = Infinity;
     for (const h of this.world.hubs) {
       if (onlyDiscovered && !this.profile.discovered.includes(h.zone.id)) continue;
+      if (onlyDiscovered && !zoneOpen(this.profile, ZONES.indexOf(h.zone))) continue;
       const d = Math.hypot(h.pos.x - p.x, h.pos.z - p.z);
       if (d < bd) { bd = d; best = h; }
     }
@@ -159,7 +160,7 @@ export class Game {
     saveProfile(p);
     const home = this.world.hubs[0].pos;
     let sx = home.x + 3, sz = home.z + 7;
-    if (p.pos && Math.hypot(p.pos.x, p.pos.z) < CONTINENT_R * 1.2 && genHeight(p.pos.x, p.pos.z) > 0.5) { sx = p.pos.x; sz = p.pos.z; }
+    if (p.pos && Math.hypot(p.pos.x, p.pos.z) < CONTINENT_R * 1.2 && genHeight(p.pos.x, p.pos.z) > 0.5 && zoneOpen(p, zoneIndexAt(p.pos.x, p.pos.z))) { sx = p.pos.x; sz = p.pos.z; }
     await this.player.load(model);
     this.buildHUD();
     await this.teleport(sx, sz, 'arriving');
@@ -353,7 +354,7 @@ export class Game {
       base: this.mapBase,
       hubs: this.world.hubs,
       zones: ZONES,
-      discovered: this.profile.discovered,
+      discovered: this.profile.discovered.filter((id) => zoneOpen(this.profile, ZONES.indexOf(ZONE_BY_ID[id]))),
       player: this.player.pos,
       facing: this.player.facing,
       others: [...this.remotes.map.values()].map((r) => ({ x: r.pos.x, z: r.pos.z, c: r.state.c, n: r.state.n })),
@@ -454,9 +455,25 @@ export class Game {
       sfx,
       title: `${hub.zone.hubName} merchant`,
       maxRarity: hub.zone.levels[0] >= 9 ? 3 : 2,
-      priceMult: 1 + hub.zone.levels[0] / 8,
+      priceMult: 1 + this.profile.level / 8,
       onChange: () => { this.save(); if (!document.querySelector('.modal-bg')) this.state = 'explore'; },
     });
+  }
+
+  // sealed zones push the player back to where they last stood in an open one
+  enforceGate() {
+    const pos = this.player.pos;
+    const i = zoneIndexAt(pos.x, pos.z);
+    if (zoneOpen(this.profile, i)) { (this.gateSafe ||= pos.clone()).copy(pos); return; }
+    if (!this.gateSafe) return;
+    pos.x = this.gateSafe.x; pos.z = this.gateSafe.z;
+    pos.y = this.world.terrain.heightAt(pos.x, pos.z);
+    const now = performance.now();
+    if (!(now - this.gateToastAt < 4000)) {
+      this.gateToastAt = now;
+      const g = zoneGate(i);
+      this.toast(`${ZONES[i].name} is sealed · defeat ${g.boss.name} in ${g.name} first`);
+    }
   }
 
   zoneBanner(zone) {
@@ -872,6 +889,11 @@ export class Game {
     this.profile.gold += gold;
     this.profile.wins++;
     this.profile.bestiary[c.species] = (this.profile.bestiary[c.species] || 0) + 1;
+    if (c.boss && c.zone && !this.profile.bosses.includes(c.zone)) {
+      this.profile.bosses.push(c.zone);
+      const next = ZONES[ZONES.indexOf(ZONE_BY_ID[c.zone]) + 1];
+      if (next) setTimeout(() => this.toast(`the way into ${next.name} is open`), 2600);
+    }
     const until = sharedTime() + (c.boss ? 300 : 75);
     this.creatures.markDefeated(c.id, until);
     this.net?.send('kill', { id: c.id, until });
@@ -1058,6 +1080,7 @@ export class Game {
       this.creatures.update(st, dt, this.camera.position, null);
     } else {
       this.player.update(dt);
+      this.enforceGate();
       const inTown = this.nearestHub(this.player.pos).dist < 50;
       this.creatures.peaceful = inTown || this.state !== 'explore';
       this.creatures.update(st, dt, this.player.pos, this.creatures.engagedId);

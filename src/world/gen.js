@@ -318,12 +318,21 @@ function scatter(cx, cz, heights, n, step) {
     const dx = (heights[j * n + i + 1] - h) / step, dz = (heights[(j + 1) * n + i] - h) / step;
     return 1 - 1 / Math.sqrt(1 + dx * dx + dz * dz);
   };
+  // place on the exact surface (not whatever lod this chunk was generated at), and on slopes
+  // sink to the lowest point of the footprint so the downhill side never floats
+  const ground = (x, z, r) => Math.min(height(x, z), height(x + r, z), height(x - r, z), height(x, z + r), height(x, z - r));
+  // solid things (trees, rocks, ruins) keep clear of each other
+  const solids = [];
+  const clear = (x, z, r) => {
+    for (const [sx, sz, sr] of solids) if ((x - sx) ** 2 + (z - sz) ** 2 < (r + sr) ** 2) return false;
+    solids.push([x, z, r]);
+    return true;
+  };
   const trees = [], props = [], spawns = [];
-  const occupied = new Set();
   const M = 400;
   for (let m = 0; m < M; m++) {
     const x = x0 + rng() * CHUNK, z = z0 + rng() * CHUNK;
-    const h = hAt(x, z);
+    const h = height(x, z);
     const zw = zoneWeights(x, z);
     // pick a zone near borders proportionally to the blend weights
     let pr = rng(), zi = zw.idx[0];
@@ -349,14 +358,12 @@ function scatter(cx, cz, heights, n, step) {
     const rot = rng() * Math.PI * 2;
     if (type === 'tree') {
       if (slope > 0.3) continue;
-      const cell = `${Math.floor(x / 3.5)}:${Math.floor(z / 3.5)}`;
-      if (occupied.has(cell)) continue;
-      occupied.add(cell);
-      if (kind === 'palm') { props.push([rng() < 0.5 ? 'tree_palmTall' : 'tree_palmBend', x, h - 0.1, z, 2.2 + rng(), rot, 0.3, 1]); continue; }
-      if (kind === 'cactus') { props.push([rng() < 0.5 ? 'cactus_tall' : 'cactus_short', x, h - 0.1, z, 2.2 + rng() * 1.5, rot, 0.45, 1]); continue; }
+      if (!clear(x, z, 1.75)) continue;
+      if (kind === 'palm') { props.push([rng() < 0.5 ? 'tree_palmTall' : 'tree_palmBend', x, ground(x, z, 0.6) - 0.1, z, 2.2 + rng(), rot, 0.3, 1]); continue; }
+      if (kind === 'cactus') { props.push([rng() < 0.5 ? 'cactus_tall' : 'cactus_short', x, ground(x, z, 0.6) - 0.1, z, 2.2 + rng() * 1.5, rot, 0.45, 1]); continue; }
       const cols = TREE_COLORS[kind] || TREE_COLORS.oak;
       const s = kind === 'bush' ? 0.8 + rng() * 0.6 : 0.85 + rng() * 0.55;
-      trees.push([kind, x, h, z, s, rot, cols[Math.floor(rng() * cols.length)], Math.floor(rng() * 3), (rng() - 0.5)]);
+      trees.push([kind, x, ground(x, z, 0.5 * s), z, s, rot, cols[Math.floor(rng() * cols.length)], Math.floor(rng() * 3), (rng() - 0.5)]);
     } else {
       let name, s = 1.4 + rng() * 1.2, col = 0, shadow = 1, y = h - 0.05, tint = null;
       switch (kind) {
@@ -373,7 +380,8 @@ function scatter(cx, cz, heights, n, step) {
         case 'ruin': name = RUINS[Math.floor(rng() * RUINS.length)]; s = 2.6 + rng() * 1.2; col = 0.8; if (slope > 0.2) continue; break;
         default: continue;
       }
-      props.push([name, x, y, z, s, rot, col, shadow, tint]);
+      if (col && !clear(x, z, 0.45 * s)) continue;
+      props.push([name, x, y - h + ground(x, z, 0.4 * s), z, s, rot, col, shadow, tint]);
     }
   }
   // creatures

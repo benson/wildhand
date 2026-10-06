@@ -14,6 +14,8 @@ export function xpFor(level, tier, boss) {
 export function ensureProgress(p) {
   if (!p.level) { p.level = 1; p.xp = 0; }
   if (!Array.isArray(p.discovered)) p.discovered = ['hearthvale'];
+  if (!Array.isArray(p.bosses)) p.bosses = [];
+  p.cleanses ||= 0;
   p.maxHp = maxHpFor(p.level);
   p.maxCharms = Math.max(charmSlotsFor(p.level), Math.min(p.charms.length, 7));
   p.hp = Math.min(p.hp, p.maxHp);
