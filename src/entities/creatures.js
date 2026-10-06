@@ -4,30 +4,16 @@ import * as THREE from 'three';
 import { CREATURES, EL } from '../cards/data.js';
 import { mulberry32 } from '../cards/profile.js';
 import { createPet } from './character.js';
-import { ISLAND_R, TOWN_R, WORLD_SEED, POND } from '../world/terrain.js';
 
 const SEG = 11; // seconds per wander segment
 const MOVE = 4.5; // seconds spent walking in each segment
 
-const TABLE = {
-  meadow: [['mossling', 5], ['cinderpup', 4], ['buzzlet', 3], ['emberhorn', 1]],
-  forest: [['mossling', 3], ['thornhog', 4], ['zapwing', 2], ['cinderpup', 2], ['bamboozle', 1]],
-  highland: [['emberhorn', 3], ['stormstripe', 2], ['zapwing', 3], ['solmane', 1], ['thornhog', 1]],
-  beach: [['waddlewave', 5], ['shellback', 4], ['floepaw', 1]],
-};
-
-function weighted(list, rng) {
-  const total = list.reduce((s, [, w]) => s + w, 0);
-  let r = rng() * total;
-  for (const [k, w] of list) { if ((r -= w) <= 0) return k; }
-  return list[0][0];
-}
-
-export function enemyStats(species, level) {
+export const HP_GROWTH = 1.36;
+export function enemyStats(species, level, boss = false) {
   const s = CREATURES[species];
   return {
-    hp: Math.round(70 * s.hp * Math.pow(1.8, level - 1)),
-    atk: Math.max(2, Math.round((2.5 + 1.5 * level) * s.atk)),
+    hp: Math.round(70 * s.hp * Math.pow(HP_GROWTH, level - 1) * (boss ? 3.2 : 1)),
+    atk: Math.max(2, Math.round((2.5 + 1.25 * level) * s.atk * (boss ? 1.35 : 1))),
   };
 }
 
@@ -38,41 +24,39 @@ export class Creatures {
     this.group = new THREE.Group();
     world.scene.add(this.group);
     this.defeated = new Map(); // id -> respawn time (shared clock seconds)
+    this.byId = new Map();
+    this.engagedId = null;
     this.ringGeo = new THREE.RingGeometry(0.7, 0.95, 32);
     this.ringGeo.rotateX(-Math.PI / 2);
   }
 
-  generate() {
-    const { terrain } = this.world;
-    const rng = mulberry32(WORLD_SEED + 2024);
-    let id = 0;
-    let tries = 0;
-    while (this.list.length < 90 && tries++ < 20000) {
-      const x = (rng() - 0.5) * ISLAND_R * 2, z = (rng() - 0.5) * ISLAND_R * 2;
-      const h = terrain.heightAt(x, z);
-      if (h < 0.6) continue;
-      if (Math.hypot(x, z) < TOWN_R + 22) continue;
-      if (terrain.slopeAt(x, z) > 0.3) continue;
-      let biome = terrain.biomeAt(x, z);
-      if (Math.hypot(x - POND.x, z - POND.z) < POND.r + 10) biome = 'beach';
-      if (this.list.some((c) => Math.hypot(c.home.x - x, c.home.z - z) < 14)) continue;
-      const species = weighted(TABLE[biome], rng);
-      const spec = CREATURES[species];
-      const level = Math.min(7, terrain.levelAt(x, z) + spec.tier - 1);
-      this.list.push({
-        id: `c${id++}`,
-        species,
-        level,
-        home: new THREE.Vector3(x, h, z),
-        seed: Math.floor(rng() * 1e9),
-        radius: 6 + rng() * 6,
+  // spawns stream in and out with terrain chunks
+  addSpawns(key, spawns) {
+    for (const sp of spawns) {
+      if (this.byId.has(sp.id)) continue;
+      const h = this.world.terrain.heightAt(sp.x, sp.z);
+      const c = {
+        ...sp,
+        chunk: key,
+        home: new THREE.Vector3(sp.x, h, sp.z),
         obj: null,
         loading: false,
-        pos: new THREE.Vector3(x, h, z),
+        pos: new THREE.Vector3(sp.x, h, sp.z),
         facing: 0,
         chase: null,
-      });
+      };
+      this.list.push(c);
+      this.byId.set(c.id, c);
     }
+  }
+  removeSpawns(key) {
+    this.list = this.list.filter((c) => {
+      if (c.chunk !== key || c.id === this.engagedId) return true;
+      if (c.obj) this.group.remove(c.obj.holder);
+      c.dead = true;
+      this.byId.delete(c.id);
+      return false;
+    });
   }
 
   // deterministic wander target for segment k
@@ -113,9 +97,10 @@ export class Creatures {
     if (c.obj || c.loading) return;
     c.loading = true;
     const spec = CREATURES[c.species];
-    const { root, anim } = await createPet(spec.model, EL[spec.el].color, 0.28);
+    const { root, anim } = await createPet(spec.model, EL[spec.el].color, c.boss ? 0.42 : 0.28);
+    if (c.dead) return;
     const holder = new THREE.Group();
-    const s = 1.35 * spec.scale;
+    const s = 1.35 * spec.scale * (c.boss ? 2.1 : 1);
     root.scale.setScalar(s);
     holder.add(root);
     // element ring on the ground
@@ -124,7 +109,7 @@ export class Creatures {
       transparent: true, opacity: 0.55, depthWrite: false,
     }));
     ring.position.y = 0.05;
-    ring.scale.setScalar(spec.scale * (spec.tier >= 3 ? 1.4 : 1));
+    ring.scale.setScalar(spec.scale * (spec.tier >= 3 ? 1.4 : 1) * (c.boss ? 2.4 : 1));
     holder.add(ring);
     c.obj = { holder, anim, ring };
     c.loading = false;
@@ -135,7 +120,7 @@ export class Creatures {
   update(t, dt, playerPos, engagedId) {
     for (const c of this.list) {
       const dist = Math.hypot(c.home.x - playerPos.x, c.home.z - playerPos.z);
-      const near = dist < 80;
+      const near = dist < (c.boss ? 140 : 80);
       if (!near) { if (c.obj) c.obj.holder.visible = false; continue; }
       if (!c.obj) { this.ensureObj(c); continue; }
       const dead = this.isDefeated(c, t) && c.id !== engagedId;
@@ -150,7 +135,7 @@ export class Creatures {
       // tier 2+ creatures give chase when you get close; they return home after
       const pd = Math.hypot(c.pos.x - playerPos.x, c.pos.z - playerPos.z);
       const spec = CREATURES[c.species];
-      if (spec.tier >= 2 && pd < 9 && !this.peaceful) c.chase = Math.min((c.chase || 0) + dt, 6);
+      if ((spec.tier >= 2 || c.boss) && pd < (c.boss ? 14 : 9) && !this.peaceful) c.chase = Math.min((c.chase || 0) + dt, 6);
       else if (c.chase) c.chase = Math.max(0, c.chase - dt * 0.5) || null;
       if (c.chase) {
         const dx = playerPos.x - c.pos.x, dz = playerPos.z - c.pos.z;
@@ -179,13 +164,13 @@ export class Creatures {
 
   // nearest live creature within range of the player
   touching(playerPos, t, range = 1.9) {
-    let best = null, bd = range;
+    let best = null, bd = Infinity;
     for (const c of this.list) {
       if (!c.obj || !c.obj.holder.visible) continue;
       if (this.isDefeated(c, t)) continue;
       const d = Math.hypot(c.pos.x - playerPos.x, c.pos.z - playerPos.z);
-      const s = CREATURES[c.species].scale;
-      if (d < bd * s) { best = c; bd = d; }
+      const s = CREATURES[c.species].scale * (c.boss ? 2.1 : 1);
+      if (d < range * s && d < bd) { best = c; bd = d; }
     }
     return best;
   }

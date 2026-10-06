@@ -1,7 +1,6 @@
 // gpu grass: a patch of instanced blades that wraps around the player.
 // blade roots read height, density and color from terrain textures.
 import * as THREE from 'three';
-import { SIZE, RES } from './terrain.js';
 
 export function createGrass(terrain, { count = 300, patch = 76 } = {}) {
   const blade = new THREE.BufferGeometry();
@@ -41,10 +40,10 @@ export function createGrass(terrain, { count = 300, patch = 76 } = {}) {
     uCenter: { value: new THREE.Vector2() },
     uPatch: { value: patch },
     uTime: { value: 0 },
-    uData: { value: terrain.dataTex },
-    uColor: { value: terrain.colorTex },
-    uWorld: { value: SIZE },
-    uTexN: { value: RES + 1 },
+    uData: { value: terrain.winTex },
+    uColor: { value: terrain.winColTex },
+    uWinOrigin: { value: terrain.winOrigin },
+    uTexN: { value: terrain.winN },
     uPlayer: { value: new THREE.Vector3(0, -100, 0) },
     uCam: { value: new THREE.Vector3() },
   };
@@ -57,12 +56,13 @@ export function createGrass(terrain, { count = 300, patch = 76 } = {}) {
 attribute vec2 aOffset;
 attribute vec4 aRand;
 uniform vec2 uCenter;
-uniform float uPatch, uTime, uWorld, uTexN;
+uniform float uPatch, uTime, uTexN;
+uniform vec2 uWinOrigin;
 uniform sampler2D uData, uColor;
 uniform vec3 uPlayer, uCam;
 varying vec3 vGrassCol;
 varying float vTip;
-vec2 worldUV(vec2 p){ return (p / uWorld * (uTexN - 1.0) + uWorld * 0.0 + (uTexN - 1.0) * 0.5 + 0.5) / uTexN; }
+vec2 worldUV(vec2 p){ return ((p - uWinOrigin) * 0.5 + 0.5) / uTexN; }
 float gh(vec2 p){ p = fract(p * vec2(234.34, 435.345)); p += dot(p, p + 34.23); return fract(p.x * p.y); }
 float gn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
   return mix(mix(gh(i), gh(i+vec2(1,0)), f.x), mix(gh(i+vec2(0,1)), gh(i+vec2(1,1)), f.x), f.y); }
@@ -78,9 +78,10 @@ float density = d.g;
 float alive = step(aRand.w, density * 1.15);
 vec2 rel = root - uCenter;
 float edge = 1.0 - smoothstep(half_ * 0.45, half_ * 0.95, length(rel));
-float forest = d.b, high = d.a;
 float hgt = (0.28 + 0.42 * aRand.x) * mix(0.7, 1.05, density) * smoothstep(0.15, 0.6, density) * alive * edge;
-hgt *= mix(1.0, 1.35, forest) * mix(1.0, 0.7, high);
+hgt *= d.b;
+// outside the data window there is no grass
+hgt *= step(0.002, uv.x) * step(uv.x, 0.998) * step(0.002, uv.y) * step(uv.y, 0.998);
 float t = position.y;
 float live = step(0.02, hgt);
 // face the camera, with a little random twist

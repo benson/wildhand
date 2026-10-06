@@ -87,14 +87,14 @@ export function loadingScreen() {
 }
 
 // victory rewards: gold + choose one card/charm
-export function rewardScreen(profile, enemy, gold, onDone, rng = Math.random) {
+export function rewardScreen(profile, enemy, gold, xp, onDone, rng = Math.random) {
   const spec = CREATURES[enemy.species];
   const options = [];
   options.push({ kind: 'card', card: creatureCard(enemy.species), label: `bind ${spec.name}`, desc: spec.bound.text });
   const enh = randomEnhancedCard(rng);
   options.push({ kind: 'card', card: enh, label: `${enh.enh} ${enh.rank} of ${enh.el}`, desc: ENHANCE[enh.enh].text });
-  const charmChance = spec.tier >= 2 ? 0.7 : 0.3;
-  const ck = rng() < charmChance ? randomCharm(profile.charms, rng, spec.tier >= 3 ? 3 : 2) : null;
+  const charmChance = enemy.boss ? 1 : spec.tier >= 2 ? 0.7 : 0.3;
+  const ck = rng() < charmChance ? randomCharm(profile.charms, rng, enemy.boss || spec.tier >= 3 ? 3 : 2) : null;
   if (ck) options.push({ kind: 'charm', key: ck, label: CHARMS[ck].name, desc: CHARMS[ck].text });
   else {
     const e2 = randomEnhancedCard(rng);
@@ -102,7 +102,7 @@ export function rewardScreen(profile, enemy, gold, onDone, rng = Math.random) {
   }
   const m = modal(`
     <h2>victory!</h2>
-    <div class="sub">${spec.name} lv ${enemy.level} defeated · <span class="gold">+${gold} gold</span> · pick one to add</div>
+    <div class="sub">${enemy.boss || spec.name} lv ${enemy.level} defeated · <span class="gold">+${gold} gold</span> · <span style="color:#8fd8ff">+${xp} xp</span> · pick one to add</div>
     <div class="choices"></div>
     <div style="text-align:center"><button class="btn ghost small" data-skip>skip</button></div>`, { closable: false });
   const box = m.el.querySelector('.choices');
@@ -126,18 +126,18 @@ export function rewardScreen(profile, enemy, gold, onDone, rng = Math.random) {
   m.el.querySelector('[data-skip]').onclick = () => { m.close(); onDone(null); };
 }
 
-function shopStock(profile, rng = Math.random) {
+function shopStock(profile, maxRarity = 3, rng = Math.random) {
   const charms = [];
   for (let i = 0; i < 3; i++) {
-    const k = randomCharm([...profile.charms, ...charms], rng);
+    const k = randomCharm([...profile.charms, ...charms], rng, maxRarity);
     if (k) charms.push(k);
   }
   const tome = pick(HAND_ORDER.slice(3), rng); // pair..flush-ish range
   return { charms, tome, packs: 2 };
 }
 
-export function shopScreen(profile, state, { onChange, sfx }) {
-  if (!state.stock) state.stock = shopStock(profile);
+export function shopScreen(profile, state, { onChange, sfx, title = 'the wandering merchant', maxRarity = 3 }) {
+  if (!state.stock) state.stock = shopStock(profile, maxRarity);
   const m = modal('<div class="shop"></div>', { onClose: onChange });
   const render = () => {
     const s = state.stock;
@@ -145,7 +145,7 @@ export function shopScreen(profile, state, { onChange, sfx }) {
     const lv = profile.handLevels[s.tome] || 1;
     const nb = handBase(s.tome, lv + 1);
     el.innerHTML = `
-      <h2>the wandering merchant</h2>
+      <h2>${title}</h2>
       <div class="sub">“cards, charms, curiosities.” · you have <span class="gold">${profile.gold} gold</span> · charms ${profile.charms.length}/${profile.maxCharms}</div>
       <h3>charms</h3><div class="choices charms-sale"></div>
       <h3>packs & services</h3>
@@ -213,7 +213,7 @@ export function shopScreen(profile, state, { onChange, sfx }) {
       }, true);
     } else if (kind === 'reroll') {
       if (!buy(2)) return;
-      s.charms = shopStock(profile).charms;
+      s.charms = shopStock(profile, maxRarity).charms;
       render();
     }
   };
@@ -287,3 +287,67 @@ export function confirmScreen(title, sub, yes = 'accept', no = 'decline') {
 }
 
 export { makeCard };
+
+// full continent map; when opened from a waystone, discovered outposts are travel targets
+export function worldMapScreen({ base, hubs, zones, discovered, player, facing, others, level, travelFrom, onTravel, onClose }) {
+  const m = modal(`<h2>${travelFrom ? `${travelFrom.zone.hubName} waystone` : 'the continent'}</h2>
+    <div class="sub">${travelFrom ? 'choose an attuned waystone to travel to. touch new waystones to attune them.' : 'zones, outposts and waystones. attuned waystones glow blue.'}</div>
+    <div class="worldmap"><canvas width="900" height="900"></canvas></div>`, { onClose });
+  const cv = m.el.querySelector('canvas');
+  const g = cv.getContext('2d');
+  const S = cv.width;
+  const toMap = (x, z) => [(x + 4096) / 8192 * S, (z + 4096) / 8192 * S];
+  const targets = [];
+  const draw = (hover) => {
+    g.clearRect(0, 0, S, S);
+    g.imageSmoothingEnabled = true;
+    g.drawImage(base, 0, 0, S, S);
+    g.textAlign = 'center';
+    for (const z of zones) {
+      const [x, y] = toMap(z.center[0], z.center[1]);
+      const lvlOk = level + 3 >= z.levels[0];
+      g.font = '600 22px Fredoka, sans-serif';
+      g.lineWidth = 5; g.strokeStyle = 'rgba(27,20,48,.75)'; g.fillStyle = '#fbf3e4';
+      g.strokeText(z.name, x, y); g.fillText(z.name, x, y);
+      g.font = '500 15px Fredoka, sans-serif';
+      g.fillStyle = lvlOk ? '#ffcf5a' : '#ff8a95';
+      g.strokeText(`lv ${z.levels[0]}–${z.levels[1]}`, x, y + 20); g.fillText(`lv ${z.levels[0]}–${z.levels[1]}`, x, y + 20);
+    }
+    targets.length = 0;
+    for (const h of hubs) {
+      const [x, y] = toMap(h.pos.x, h.pos.z);
+      const known = discovered.includes(h.zone.id);
+      const can = travelFrom && known && h !== travelFrom;
+      g.beginPath(); g.arc(x, y, hover === h ? 12 : 9, 0, 7);
+      g.fillStyle = known ? '#8fd8ff' : '#ffcf5a';
+      g.fill(); g.lineWidth = 3; g.strokeStyle = can ? '#ffffff' : '#1b1430'; g.stroke();
+      g.font = '600 14px Fredoka, sans-serif';
+      g.lineWidth = 4; g.strokeStyle = 'rgba(27,20,48,.8)'; g.fillStyle = '#fbf3e4';
+      g.strokeText(h.zone.hubName, x, y - 16); g.fillText(h.zone.hubName, x, y - 16);
+      if (can) targets.push({ h, x, y });
+    }
+    for (const o of others) {
+      const [x, y] = toMap(o.x, o.z);
+      g.beginPath(); g.arc(x, y, 6, 0, 7); g.fillStyle = o.c; g.fill(); g.strokeStyle = '#fff'; g.lineWidth = 2; g.stroke();
+    }
+    const [px, py] = toMap(player.x, player.z);
+    g.save(); g.translate(px, py); g.rotate(-facing + Math.PI);
+    g.fillStyle = '#fff'; g.strokeStyle = '#1b1430'; g.lineWidth = 3;
+    g.beginPath(); g.moveTo(0, -12); g.lineTo(8, 8); g.lineTo(0, 3); g.lineTo(-8, 8); g.closePath(); g.stroke(); g.fill();
+    g.restore();
+  };
+  draw(null);
+  const pick = (e) => {
+    const r = cv.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width * S, y = (e.clientY - r.top) / r.height * S;
+    return targets.find((t) => Math.hypot(t.x - x, t.y - y) < 22)?.h || null;
+  };
+  cv.addEventListener('pointermove', (e) => { const h = pick(e); cv.style.cursor = h ? 'pointer' : 'default'; draw(h); });
+  cv.addEventListener('click', (e) => {
+    const h = pick(e);
+    if (!h) return;
+    m.close();
+    onTravel(h);
+  });
+  return m;
+}

@@ -211,6 +211,61 @@ export const CREATURES = {
     hp: 2.1, atk: 1.55, moves: ['howl', 'zap', 'bite'],
     bound: { rank: 9, text: '+4 mult per volt card scored', card: (c) => c.add('mult', 4 * c.scored.filter((x) => x.el === 'volt').length) },
   },
+  peeplet: {
+    name: 'peeplet', el: 'volt', model: 'chick', scale: 0.9, tier: 1,
+    hp: 0.7, atk: 0.9, moves: ['zap', 'nibble', 'static'],
+    bound: { rank: 2, text: '+3 mult per card held in hand', card: (c) => c.add('mult', 3 * (c.held || 0)) },
+  },
+  drowsel: {
+    name: 'drowsel', el: 'grove', model: 'koala', scale: 1.1, tier: 2,
+    hp: 1.4, atk: 0.9, moves: ['nibble', 'tangle', 'shell'],
+    bound: { rank: 6, text: '+30 chips, heal 2 hp', card: (c) => { c.add('chips', 30); c.heal(2); } },
+  },
+  shadepaw: {
+    name: 'shadepaw', el: 'volt', model: 'cat', scale: 1.0, tier: 2,
+    hp: 1.0, atk: 1.3, moves: ['bite', 'static', 'bite'],
+    bound: { rank: 8, text: '+12 mult if 3 or fewer cards are played', card: (c) => c.cards.length <= 3 && c.add('mult', 12) },
+  },
+  inchwyrm: {
+    name: 'inchwyrm', el: 'grove', model: 'caterpillar', scale: 1.0, tier: 1,
+    hp: 0.9, atk: 0.8, moves: ['nibble', 'tangle', 'nibble'],
+    bound: { rank: 1, text: '+3 mult per grove card scored', card: (c) => c.add('mult', 3 * c.scored.filter((x) => x.el === 'grove').length) },
+  },
+  bogbeaver: {
+    name: 'bogbeaver', el: 'tide', model: 'beaver', scale: 1.1, tier: 2,
+    hp: 1.5, atk: 1.0, moves: ['soak', 'crash', 'shell'],
+    bound: { rank: 7, text: '+15 chips per tide card scored', card: (c) => c.add('chips', 15 * c.scored.filter((x) => x.el === 'tide').length) },
+  },
+  mudsnout: {
+    name: 'mudsnout', el: 'grove', model: 'pig', scale: 1.1, tier: 2,
+    hp: 1.6, atk: 1.0, moves: ['gore', 'nibble', 'tangle'],
+    bound: { rank: 4, text: '+9 mult when scored', card: (c) => c.add('mult', 9) },
+  },
+  coconaut: {
+    name: 'coconaut', el: 'volt', model: 'monkey', scale: 1.0, tier: 2,
+    hp: 1.1, atk: 1.15, moves: ['zap', 'static', 'bite'],
+    bound: { rank: 6, text: '1 in 2 chance for ×2 mult', card: (c) => c.rng() < 0.5 && c.add('xmult', 2) },
+  },
+  dunestrider: {
+    name: 'dunestrider', el: 'ember', model: 'giraffe', scale: 1.3, tier: 2,
+    hp: 1.5, atk: 1.15, moves: ['charge', 'gore', 'scorch'],
+    bound: { rank: 9, text: '+50 chips when scored', card: (c) => c.add('chips', 50) },
+  },
+  sandtusk: {
+    name: 'sandtusk', el: 'ember', model: 'elephant', scale: 1.5, tier: 3,
+    hp: 2.6, atk: 1.3, moves: ['charge', 'crash', 'shell'],
+    bound: { rank: 10, text: '×1.8 mult if the hand contains a pair', card: (c) => c.contains('pair') && c.add('xmult', 1.8) },
+  },
+  magmox: {
+    name: 'magmox', el: 'ember', model: 'cow', scale: 1.25, tier: 2,
+    hp: 1.7, atk: 1.2, moves: ['charge', 'scorch', 'gore'],
+    bound: { rank: 8, text: '+6 mult per ember card scored', card: (c) => c.add('mult', 6 * c.scored.filter((x) => x.el === 'ember').length) },
+  },
+  cinderhound: {
+    name: 'cinderhound', el: 'ember', model: 'dog', scale: 1.15, tier: 2,
+    hp: 1.3, atk: 1.4, moves: ['bite', 'scorch', 'howl'],
+    bound: { rank: 7, text: '×1.4 mult when scored', card: (c) => c.add('xmult', 1.4) },
+  },
 };
 
 export const MOVES = {

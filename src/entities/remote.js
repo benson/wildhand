@@ -1,6 +1,6 @@
 // other players, driven by network state with interpolation
 import * as THREE from 'three';
-import { createCharacter } from './character.js';
+import { createCharacter, createPet } from './character.js';
 import { CHAR_MODELS } from '../world/assets.js';
 
 export class Remotes {
@@ -62,6 +62,26 @@ export class Remotes {
       if (!r.holder) continue;
       r.holder.position.copy(r.pos);
       r.holder.rotation.y = r.facing;
+      if (r.state.r && !r.mount && !r.mounting) {
+        r.mounting = true;
+        createPet('deer', '#b07a4a', 0.12).then(({ root, anim }) => {
+          r.mounting = false;
+          if (!r.holder || !r.state.r) return;
+          root.scale.setScalar(1.75);
+          r.holder.add(root);
+          r.mount = { root, anim };
+          r.holder.children[0].position.set(0, 1.5, -0.2);
+        });
+      } else if (!r.state.r && r.mount) {
+        r.holder.remove(r.mount.root);
+        r.mount = null;
+        r.holder.children[0].position.set(0, 0, 0);
+      }
+      if (r.mount) {
+        const moving = r.pos.distanceTo(r.target) > 0.05;
+        r.mount.anim.play(moving ? 'run' : 'idle');
+        r.mount.anim.update(dt);
+      }
       const a = r.state.a;
       if (a && r.anim.has(a)) r.anim.play(a);
       r.anim.update(dt);
@@ -88,5 +108,7 @@ function sanitize(s) {
     n: typeof s.n === 'string' ? s.n.slice(0, 16) : 'wanderer',
     c: typeof s.c === 'string' && /^#[0-9a-f]{6}$/i.test(s.c) ? s.c : '#ffffff',
     b: s.b ? 1 : 0,
+    r: s.r ? 1 : 0,
+    l: Number.isFinite(s.l) ? Math.max(1, Math.min(30, Math.round(s.l))) : 1,
   };
 }

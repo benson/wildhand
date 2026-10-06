@@ -1,28 +1,38 @@
-// assembles the island: lights, sky, terrain, water, grass, trees, props, town
+// the continent: lights, sky, streamed terrain + flora, water, grass, outposts, zone atmosphere
 import * as THREE from 'three';
-import { Terrain, TOWN_R, POND, RUINS, WORLD_SEED, ISLAND_R, PATHS } from './terrain.js';
-import { createSky } from './sky.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { Terrain } from './terrain.js';
+import { createSky, SKY } from './sky.js';
 import { createWater } from './water.js';
 import { createGrass } from './grass.js';
 import { Forest } from './trees.js';
 import { StaticBatcher } from './batcher.js';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { mulberry32 } from '../cards/profile.js';
-import { SKY } from './sky.js';
+import { ZONES, ROADS, ZONE_BY_ID } from './zones.js';
+import { hubHeight, zoneWeights } from './gen.js';
 
 export const SUN_DIR = new THREE.Vector3(-0.62, 0.5, 0.6).normalize();
 
-// spatial hash of circular colliders
+// spatial hash of circular colliders, removable by owner key (chunk)
 class Colliders {
-  constructor() { this.cells = new Map(); this.size = 8; }
-  key(i, j) { return i * 10007 + j; }
-  add(x, z, r) {
-    const i = Math.floor(x / this.size), j = Math.floor(z / this.size);
-    const k = this.key(i, j);
+  constructor() { this.cells = new Map(); this.size = 8; this.owned = new Map(); }
+  key(i, j) { return i * 100003 + j; }
+  add(x, z, r, owner = null) {
+    const k = this.key(Math.floor(x / this.size), Math.floor(z / this.size));
     if (!this.cells.has(k)) this.cells.set(k, []);
-    this.cells.get(k).push({ x, z, r });
+    this.cells.get(k).push({ x, z, r, owner });
+    if (owner) { if (!this.owned.has(owner)) this.owned.set(owner, []); this.owned.get(owner).push(k); }
   }
-  // push a point out of any colliders it overlaps
+  removeOwner(owner) {
+    const ks = this.owned.get(owner);
+    if (!ks) return;
+    for (const k of new Set(ks)) {
+      const list = this.cells.get(k);
+      if (!list) continue;
+      const kept = list.filter((e) => e.owner !== owner);
+      if (kept.length) this.cells.set(k, kept); else this.cells.delete(k);
+    }
+    this.owned.delete(owner);
+  }
   resolve(p, radius) {
     const i0 = Math.floor(p.x / this.size), j0 = Math.floor(p.z / this.size);
     for (let i = i0 - 1; i <= i0 + 1; i++) for (let j = j0 - 1; j <= j0 + 1; j++) {
@@ -71,7 +81,7 @@ export function billboards(count, uniforms, body, frag, extra = '') {
         vUv = uv;
         gl_Position = projectionMatrix * mv;
       }`,
-    fragmentShader: `varying float vLife; varying vec2 vUv;
+    fragmentShader: `${extra} varying float vLife; varying vec2 vUv;
       void main(){ float d = length(vUv - 0.5); float a = smoothstep(0.5, 0.0, d); a *= a;
         ${frag} }`,
   });
@@ -80,365 +90,264 @@ export function billboards(count, uniforms, body, frag, extra = '') {
   return mesh;
 }
 
+let glowTexture = null;
+export function glowTex() {
+  if (glowTexture) return glowTexture;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 64;
+  const g = cv.getContext('2d');
+  const grd = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grd.addColorStop(0, 'rgba(255,255,255,1)');
+  grd.addColorStop(0.25, 'rgba(255,255,255,0.6)');
+  grd.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grd;
+  g.fillRect(0, 0, 64, 64);
+  glowTexture = new THREE.CanvasTexture(cv);
+  return glowTexture;
+}
+
+const PARTICLES = {
+  pollen: { color: [1, 0.95, 0.7], fall: 0, size: 0.06, blink: 1, swirl: 2, bright: 2 },
+  fireflies: { color: [0.75, 1, 0.35], fall: 0, size: 0.09, blink: 2.5, swirl: 1.5, bright: 3 },
+  snow: { color: [1, 1, 1], fall: -1.8, size: 0.1, blink: 0, swirl: 1.2, bright: 1.2 },
+  embers: { color: [1, 0.45, 0.1], fall: 1.4, size: 0.08, blink: 1.5, swirl: 1, bright: 3.5 },
+  dust: { color: [0.95, 0.82, 0.62], fall: -0.15, size: 0.05, blink: 0, swirl: 4, bright: 1 },
+};
+
 export class World {
   constructor(scene, quality) {
     this.scene = scene;
     this.quality = quality;
-    this.terrain = new Terrain();
+    this.terrain = new Terrain(scene, quality);
     this.colliders = new Colliders();
     this.updatables = [];
-    this.interactables = []; // { pos, radius, label, action }
-    this.batcher = new StaticBatcher();
+    this.interactables = []; // { id, hub, pos, radius, label }
+    this.hubs = [];
+    this.chunkObjs = new Map();
+    this.onSpawns = null;
+    this.onUnloadSpawns = null;
+    this.zoneIdx = 0;
   }
 
   async build(onProgress = () => {}) {
     const { scene, terrain } = this;
     scene.background = SKY.horizon.clone();
-    scene.fog = new THREE.Fog(SKY.fog.clone(), 70, 420);
+    scene.fog = new THREE.Fog(SKY.fog.clone(), this.quality.fogNear, this.quality.fogFar);
 
-    // lights
-    const hemi = new THREE.HemisphereLight('#b4c8ff', '#8a7050', 1.3);
-    scene.add(hemi);
+    this.hemi = new THREE.HemisphereLight('#b4c8ff', '#8a7050', 1.3);
+    scene.add(this.hemi);
     const sun = new THREE.DirectionalLight('#ffe0bd', 2.9);
-    sun.position.copy(SUN_DIR).multiplyScalar(120);
     sun.castShadow = true;
-    const sz = 2048;
-    sun.shadow.mapSize.set(sz, sz);
+    sun.shadow.mapSize.set(this.quality.shadow, this.quality.shadow);
     const ext = 55;
-    Object.assign(sun.shadow.camera, { left: -ext, right: ext, top: ext, bottom: -ext, near: 1, far: 320 });
+    Object.assign(sun.shadow.camera, { left: -ext, right: ext, top: ext, bottom: -ext, near: 1, far: 400 });
     sun.shadow.bias = -0.0004;
     sun.shadow.normalBias = 0.04;
-    sun.shadow.radius = 3;
     scene.add(sun, sun.target);
     this.sun = sun;
 
     this.sky = createSky(SUN_DIR);
     scene.add(this.sky);
-    onProgress(0.1, 'raising the island');
 
-    scene.add(terrain.buildMesh());
-    terrain.buildTextures();
-    onProgress(0.3, 'filling the sea');
-
+    onProgress(0.05, 'surveying the continent');
+    await terrain.loadMap(this.quality.mapRes);
     this.water = createWater(terrain, SUN_DIR);
+    this.water.userData.setMap();
     scene.add(this.water);
-
     this.grass = createGrass(terrain, { count: this.quality.grass, patch: this.quality.grassPatch });
     scene.add(this.grass);
-    onProgress(0.4, 'growing trees');
-
     this.forest = new Forest();
-    scene.add(this.forest.build(this.placeTrees()));
-    onProgress(0.55, 'placing stones');
-
-    await this.placeProps();
-    onProgress(0.75, 'building the town');
-    await this.buildTown();
-    await this.buildRuins();
-    await this.batcher.build(scene);
     this.addMotes();
-    onProgress(0.85, 'waking creatures');
+
+    terrain.on('scatter', (key, c) => this.buildChunkObjects(key, c));
+    terrain.on('unload', (key) => this.dropChunkObjects(key));
+
+    onProgress(0.2, 'raising outposts');
+    for (let i = 0; i < ZONES.length; i++) await this.buildHub(i);
+    this.hubLight = new THREE.PointLight('#ff9a4a', 30, 20, 1.6);
+    scene.add(this.hubLight);
   }
 
-  placeTrees() {
-    const { terrain } = this;
-    const rng = mulberry32(WORLD_SEED + 99);
-    const out = [];
-    const tint = (hex, j = 0.08) => {
-      const c = new THREE.Color(hex);
-      c.offsetHSL((rng() - 0.5) * 0.03, (rng() - 0.5) * 0.1, (rng() - 0.5) * j);
-      return c;
-    };
-    const tries = 26000;
-    for (let i = 0; i < tries; i++) {
-      const x = (rng() - 0.5) * ISLAND_R * 2.1, z = (rng() - 0.5) * ISLAND_R * 2.1;
-      const h = terrain.heightAt(x, z);
-      if (h < 2.2) continue;
-      const r = Math.hypot(x, z);
-      if (r < TOWN_R + 6) continue;
-      if (terrain.pathAt(x, z) < 4.5) continue;
-      if (terrain.slopeAt(x, z) > 0.28) continue;
-      if (Math.hypot(x - RUINS.x, z - RUINS.z) < 22) continue;
-      const biome = terrain.biomeAt(x, z);
-      let p = 0;
-      let kind = 'oak';
-      if (biome === 'forest') { p = 0.5; kind = rng() < 0.7 ? 'oak' : 'birch'; }
-      else if (biome === 'meadow') { p = 0.045; kind = rng() < 0.55 ? 'oak' : (rng() < 0.5 ? 'birch' : 'bush'); }
-      else if (biome === 'highland') { p = h > 30 ? 0.01 : 0.12; kind = rng() < 0.8 ? 'pine' : 'bush'; }
-      if (rng() > p) continue;
-      if (this.colliders.near(x, z, kind === 'bush' ? 1.5 : 3.2)) continue;
-      const s = kind === 'bush' ? 0.8 + rng() * 0.6 : 0.85 + rng() * 0.5;
-      let color;
-      if (kind === 'pine') color = tint('#3f7f4f');
-      else if (kind === 'birch') color = rng() < 0.25 ? tint('#e8b84a') : tint('#8fc25a');
-      else if (biome === 'forest') color = rng() < 0.12 ? tint('#d9783f') : tint('#4f9a45');
-      else color = rng() < 0.15 ? tint('#f2a7b8', 0.04) : tint('#6fb04c');
-      out.push({ kind, x, y: h, z, s, rot: rng() * Math.PI * 2, color, variant: Math.floor(rng() * 3) });
-      if (kind !== 'bush') this.colliders.add(x, z, 0.45 * s);
+  // wait until the ground and flora around p exist (used at spawn and after teleporting)
+  async settle(p, onProgress = () => {}) {
+    const start = performance.now();
+    for (;;) {
+      this.terrain.update(p);
+      const left = this.terrain.pendingNear(p, 170);
+      onProgress(left);
+      if (left === 0 || performance.now() - start > 20000) break;
+      await new Promise((r) => setTimeout(r, 60));
     }
-    this.treeCount = out.length;
-    return out;
+    this.terrain.buildWindow(p);
   }
 
-  // scatter kenney props in each biome
-  async placeProps() {
-    const { terrain } = this;
-    const rng = mulberry32(WORLD_SEED + 7);
-    const add = (name, x, z, s = 1, rot = rng() * Math.PI * 2, sink = 0.05, collide = 0) => {
-      const y = terrain.heightAt(x, z) - sink;
-      const m = new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rot), new THREE.Vector3(s, s, s));
-      this.batcher.add(name, m, !name.startsWith('flower'));
-      if (collide) this.colliders.add(x, z, collide * s);
-    };
-    const rocks = ['rock_largeA', 'rock_largeB', 'rock_largeC', 'rock_largeD'];
-    const stones = ['stone_largeA', 'stone_largeB', 'stone_tallA', 'stone_tallB'];
-    const small = ['rock_smallA', 'rock_smallB', 'rock_smallC'];
-    const flowers = ['flower_purpleA', 'flower_redA', 'flower_yellowA', 'flower_purpleB', 'flower_yellowB'];
-    const shrooms = ['mushroom_red', 'mushroom_redGroup', 'mushroom_tanGroup'];
-    for (let i = 0; i < 16000; i++) {
-      const x = (rng() - 0.5) * ISLAND_R * 2.1, z = (rng() - 0.5) * ISLAND_R * 2.1;
-      const h = terrain.heightAt(x, z);
-      if (h < 0.4) continue;
-      const r = Math.hypot(x, z);
-      if (r < TOWN_R + 2) continue;
-      const pd = terrain.pathAt(x, z);
-      if (pd < 2.5) continue;
-      const biome = terrain.biomeAt(x, z);
-      const slope = terrain.slopeAt(x, z);
-      const roll = rng();
-      if (biome === 'highland') {
-        if (roll < 0.05) add(stones[Math.floor(rng() * 4)], x, z, 2 + rng() * 3, undefined, 0.4, 0.9);
-        else if (roll < 0.09) add(small[Math.floor(rng() * 3)], x, z, 1.5 + rng() * 2);
-      } else if (biome === 'forest') {
-        if (roll < 0.02) add(rocks[Math.floor(rng() * 4)], x, z, 1.4 + rng(), undefined, 0.2, 0.8);
-        else if (roll < 0.055) add(shrooms[Math.floor(rng() * 3)], x, z, 1.6 + rng());
-        else if (roll < 0.065 && slope < 0.15) add(rng() < 0.5 ? 'stump_old' : 'log_large', x, z, 1.5, undefined, 0.05, 0.5);
-        else if (roll < 0.08) add('plant_bushDetailed', x, z, 1.6 + rng());
-      } else if (biome === 'meadow') {
-        if (roll < 0.012) add(rocks[Math.floor(rng() * 4)], x, z, 1.2 + rng() * 1.2, undefined, 0.2, 0.8);
-        else if (roll < 0.11) add(flowers[Math.floor(rng() * 5)], x, z, 1.4 + rng() * 0.8);
-        else if (roll < 0.118) add('plant_bushLarge', x, z, 1.4 + rng());
-      } else if (biome === 'beach') {
-        if (roll < 0.02 && h > 0.6) add(small[Math.floor(rng() * 3)], x, z, 1.4 + rng() * 2);
-        else if (roll < 0.03 && h > 0.8) {
-          add(rng() < 0.5 ? 'tree_palmTall' : 'tree_palmBend', x, z, 2.2 + rng(), undefined, 0.1, 0.25);
-        }
+  async buildChunkObjects(key, c) {
+    const entry = { trees: null, props: null, alive: true };
+    this.chunkObjs.set(key, entry);
+    if (c.trees.length) {
+      entry.trees = this.forest.buildChunk(c.trees);
+      this.scene.add(entry.trees);
+      for (const t of c.trees) if (t[0] !== 'bush') this.colliders.add(t[1], t[3], 0.45 * t[4], key);
+    }
+    if (c.spawns.length) this.onSpawns?.(key, c.spawns);
+    if (c.props.length) {
+      const b = new StaticBatcher();
+      const q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
+      for (const [name, x, y, z, s, rot, col, shadow, tint] of c.props) {
+        const m = new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), q.setFromAxisAngle(up, rot), new THREE.Vector3(s, s, s));
+        b.add(name, m, !!shadow, tint);
+        if (col) this.colliders.add(x, z, col * s, key);
       }
-    }
-    // lily pads on the pond
-    for (let i = 0; i < 26; i++) {
-      const a = rng() * Math.PI * 2, d = rng() * POND.r * 0.6;
-      const x = POND.x + Math.cos(a) * d, z = POND.z + Math.sin(a) * d;
-      if (terrain.heightAt(x, z) > -0.5) continue;
-      const m = new THREE.Matrix4().compose(new THREE.Vector3(x, 0.03, z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rng() * 6), new THREE.Vector3(2, 2, 2));
-      this.batcher.add('lily_large', m, false);
+      const g = await b.build();
+      if (!entry.alive) { disposeGroup(g); return; }
+      entry.props = g;
+      this.scene.add(g);
     }
   }
 
-  put(name, x, z, { s = 1, rot = 0, y = null, collide = 0, shadow = true } = {}) {
-    const m = new THREE.Matrix4().compose(
-      new THREE.Vector3(x, y ?? this.terrain.heightAt(x, z), z),
-      new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rot),
-      new THREE.Vector3(s, s, s),
-    );
-    this.batcher.add(name, m, shadow);
-    if (collide) this.colliders.add(x, z, collide);
+  dropChunkObjects(key) {
+    const e = this.chunkObjs.get(key);
+    if (!e) return;
+    e.alive = false;
+    if (e.trees) { this.scene.remove(e.trees); disposeGroup(e.trees); }
+    if (e.props) { this.scene.remove(e.props); disposeGroup(e.props); }
+    this.colliders.removeOwner(key);
+    this.onUnloadSpawns?.(key);
+    this.chunkObjs.delete(key);
   }
 
-  async buildTown() {
-    const t = this.terrain;
-    const y0 = t.heightAt(0, 0);
-    // the hearth: central campfire that heals
-    await this.put('campfire_stones', 0, 0, { s: 2.6, collide: 1.3 });
-    await this.put('campfire_logs', 0, 0, { s: 2.2 });
-    this.fire = this.makeFire(new THREE.Vector3(0, y0 + 0.3, 0));
-    this.interactables.push({ id: 'hearth', pos: new THREE.Vector3(0, y0, 0), radius: 4, label: 'rest at the hearth' });
-
-    // log benches around the fire
-    for (let i = 0; i < 4; i++) {
-      const a = i * Math.PI / 2 + Math.PI / 4;
-      await this.put('log', Math.cos(a) * 4.4, Math.sin(a) * 4.4, { s: 2.4, rot: -a, collide: 0.8 });
+  // ---------------------------------------------------------------- outposts
+  async buildHub(i) {
+    const zone = ZONES[i];
+    const [hx, hz] = zone.hub;
+    const y = hubHeight(i);
+    const big = zone.id === 'hearthvale';
+    const b = new StaticBatcher();
+    const up = new THREE.Vector3(0, 1, 0);
+    const put = (name, dx, dz, { s = 1, rot = 0, collide = 0, shadow = true } = {}) => {
+      const m = new THREE.Matrix4().compose(new THREE.Vector3(hx + dx, y, hz + dz), new THREE.Quaternion().setFromAxisAngle(up, rot), new THREE.Vector3(s, s, s));
+      b.add(name, m, shadow);
+      if (collide) this.colliders.add(hx + dx, hz + dz, collide);
+    };
+    put('campfire_stones', 0, 0, { s: 2.6, collide: 1.3 });
+    put('campfire_logs', 0, 0, { s: 2.2 });
+    const firePos = new THREE.Vector3(hx, y + 0.3, hz);
+    const fire = this.makeFire(firePos);
+    const benches = big ? 4 : 3;
+    for (let k = 0; k < benches; k++) {
+      const a = k * (Math.PI * 2 / benches) + Math.PI / 4;
+      put('log', Math.cos(a) * 4.4, Math.sin(a) * 4.4, { s: 2.4, rot: -a, collide: 0.8 });
     }
-    // tents ringing the plaza
-    const tents = [[-14, -9, 0.9], [13, 11, 3.9], [3, 19, 2.3], [16, -2, 4.9]];
-    for (const [x, z, r] of tents) await this.put('tent_detailedOpen', x, z, { s: 3, rot: r, collide: 2.4 });
-    for (const [x, z] of [[-17, 4], [-6, -17], [10, 17.5]]) await this.put('log_stack', x, z, { s: 2.2, rot: Math.random() * 6, collide: 1 });
-    for (const [x, z] of [[-4, -19], [19, 6]]) await this.put('pot_large', x, z, { s: 2.2, collide: 0.6 });
-    for (const [x, z] of [[6, -18], [-18, -3]]) await this.put('crop_pumpkin', x, z, { s: 2.6 });
-
-    // merchant stall
-    this.buildStall(new THREE.Vector3(7, y0, -9), -0.6);
-    // duel ring
-    this.buildDuelRing(new THREE.Vector3(-9, y0, 9));
-
-    // signposts at path heads
-    for (const p of PATHS) {
-      const [x, z] = p[1];
-      const a = Math.atan2(z, x);
-      await this.put('sign', Math.cos(a) * (TOWN_R - 2), Math.sin(a) * (TOWN_R - 2), { s: 2.2, rot: -a + Math.PI / 2 });
+    const R = big ? 17 : 12;
+    const tents = big ? [[-14, -9, 0.9], [13, 11, 3.9], [3, 19, 2.3], [16, -2, 4.9]] : [[-11, 6, 1.2], [10, 9, 3.6]];
+    for (const [x, z, r] of tents) put('tent_detailedOpen', x, z, { s: 3, rot: r, collide: 2.4 });
+    if (big) {
+      for (const [x, z] of [[-17, 4], [-6, -17], [10, 17.5]]) put('log_stack', x, z, { s: 2.2, rot: x, collide: 1 });
+      for (const [x, z] of [[-4, -19], [19, 6]]) put('pot_large', x, z, { s: 2.2, collide: 0.6 });
+      for (const [x, z] of [[6, -18], [-18, -3]]) put('crop_pumpkin', x, z, { s: 2.6 });
+    } else {
+      put('log_stack', -12, -4, { s: 2, rot: 1, collide: 1 });
+      put('pot_large', 4, 12, { s: 2, collide: 0.6 });
     }
-    // lanterns
-    for (let i = 0; i < 10; i++) {
-      const a = (i / 10) * Math.PI * 2 + 0.2;
-      this.lantern(Math.cos(a) * (TOWN_R - 6), Math.sin(a) * (TOWN_R - 6));
+    // waystone: fast travel between discovered outposts
+    const ws = new THREE.Vector3(hx - (big ? 6 : 7), y, hz - (big ? 12 : 8));
+    put('statue_obelisk', ws.x - hx, ws.z - hz, { s: 2.6, collide: 1 });
+    const glow = this.makeGlow(ws.clone().setY(y + 6.2), '#8fd8ff', 3.2);
+    // signposts toward each road leaving this hub
+    for (const [a, c] of ROADS) {
+      if (a !== zone.id && c !== zone.id) continue;
+      const other = ZONE_BY_ID[a === zone.id ? c : a].hub;
+      const ang = Math.atan2(other[1] - hz, other[0] - hx);
+      put('sign', Math.cos(ang) * (R + 3), Math.sin(ang) * (R + 3), { s: 2.2, rot: -ang + Math.PI / 2 });
     }
-    this.finishLanterns();
+    this.scene.add(await b.build());
+    this.lanterns(hx, hz, y, R - 3, big ? 10 : 6);
+    const stall = this.buildStall(new THREE.Vector3(hx + (big ? 7 : 8), y, hz + (big ? -9 : -6)), big ? -0.6 : -0.9);
+    const duel = big ? this.buildDuelRing(new THREE.Vector3(hx - 9, y, hz + 9)) : null;
+    const hub = { index: i, zone, pos: new THREE.Vector3(hx, y, hz), fire, glow, stall, duel, waystone: ws, merchantPos: stall.merchantPos, merchantRot: stall.rot, firePos };
+    this.hubs.push(hub);
+    this.interactables.push({ id: 'hearth', hub, pos: new THREE.Vector3(hx, y, hz), radius: 4, label: `rest at the ${zone.hubName} hearth` });
+    this.interactables.push({ id: 'shop', hub, pos: stall.front, radius: 3.2, label: 'trade with the merchant' });
+    this.interactables.push({ id: 'waystone', hub, pos: ws, radius: 3.4, label: `touch the ${zone.hubName} waystone` });
+    if (duel) this.interactables.push({ id: 'duel', hub, pos: duel, radius: 4.5, label: 'duel ring — challenge a nearby player' });
   }
 
-  // all lanterns share two merged meshes (posts + glowing lamps)
-  lantern(x, z) {
-    const y = this.terrain.heightAt(x, z);
-    const rot = Math.random() * 6;
-    const m = new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rot), new THREE.Vector3(1, 1, 1));
-    const pole = new THREE.CylinderGeometry(0.07, 0.09, 2.6, 6).translate(0, 1.3, 0);
-    const arm = new THREE.BoxGeometry(0.6, 0.06, 0.06).translate(0.25, 2.5, 0);
-    const lamp = new THREE.SphereGeometry(0.2, 12, 8).translate(0.5, 2.3, 0);
-    (this._lanternPosts ||= []).push(pole.applyMatrix4(m), arm.toNonIndexed().applyMatrix4(m));
-    (this._lanternLamps ||= []).push(lamp.applyMatrix4(m));
-    this.colliders.add(x, z, 0.25);
-  }
-
-  finishLanterns() {
-    const posts = this._lanternPosts.map((g) => (g.index ? g.toNonIndexed() : g));
-    posts.forEach((g) => g.deleteAttribute('uv'));
-    const pm = new THREE.Mesh(mergeGeometries(posts), new THREE.MeshStandardMaterial({ color: '#4a3526', roughness: 0.9 }));
+  lanterns(hx, hz, y, r, count) {
+    const posts = [], lamps = [];
+    const up = new THREE.Vector3(0, 1, 0);
+    for (let i = 0; i < count; i++) {
+      const a = (i / count) * Math.PI * 2 + 0.2;
+      const x = hx + Math.cos(a) * r, z = hz + Math.sin(a) * r;
+      const m = new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromAxisAngle(up, a * 3.1), new THREE.Vector3(1, 1, 1));
+      const pole = new THREE.CylinderGeometry(0.07, 0.09, 2.6, 6).translate(0, 1.3, 0).toNonIndexed();
+      const arm = new THREE.BoxGeometry(0.6, 0.06, 0.06).translate(0.25, 2.5, 0).toNonIndexed();
+      pole.deleteAttribute('uv'); arm.deleteAttribute('uv');
+      posts.push(pole.applyMatrix4(m), arm.applyMatrix4(m));
+      lamps.push(new THREE.SphereGeometry(0.2, 12, 8).translate(0.5, 2.3, 0).applyMatrix4(m));
+      this.colliders.add(x, z, 0.25);
+    }
+    const pm = new THREE.Mesh(mergeGeometries(posts), LANTERN_POST);
     pm.castShadow = true;
-    const lm = new THREE.Mesh(mergeGeometries(this._lanternLamps), new THREE.MeshStandardMaterial({ color: '#ffcf7a', emissive: '#ffb347', emissiveIntensity: 3 }));
-    this.scene.add(pm, lm);
+    this.scene.add(pm, new THREE.Mesh(mergeGeometries(lamps), LANTERN_LAMP));
   }
 
   buildStall(pos, rot) {
     const g = new THREE.Group();
-    const wood = new THREE.MeshStandardMaterial({ color: '#8a5a3a', roughness: 0.9 });
-    const posts = [[-1.8, -1.1], [1.8, -1.1], [-1.8, 1.1], [1.8, 1.1]];
-    for (const [x, z] of posts) {
-      const p = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 3, 6), wood);
+    for (const [x, z] of [[-1.8, -1.1], [1.8, -1.1], [-1.8, 1.1], [1.8, 1.1]]) {
+      const p = new THREE.Mesh(STALL_POST_GEO, STALL_WOOD);
       p.position.set(x, 1.5, z);
       p.castShadow = true;
       g.add(p);
     }
-    const counter = new THREE.Mesh(new THREE.BoxGeometry(3.6, 1, 0.9), wood);
+    const counter = new THREE.Mesh(new THREE.BoxGeometry(3.6, 1, 0.9), STALL_WOOD);
     counter.position.set(0, 0.5, 1.0);
     counter.castShadow = counter.receiveShadow = true;
-    const top = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.1, 1.1), new THREE.MeshStandardMaterial({ color: '#c89a68', roughness: 0.8 }));
+    const top = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.1, 1.1), STALL_TOP);
     top.position.set(0, 1.03, 1.0);
-    g.add(counter, top);
-    // striped canopy cloth that ripples
-    const cv = document.createElement('canvas');
-    cv.width = 256; cv.height = 8;
-    const cx = cv.getContext('2d');
-    for (let i = 0; i < 8; i++) { cx.fillStyle = i % 2 ? '#f4e9d4' : '#c8453b'; cx.fillRect(i * 32, 0, 32, 8); }
-    const tex = new THREE.CanvasTexture(cv);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    const cloth = new THREE.PlaneGeometry(4.2, 2.8, 24, 12);
-    cloth.rotateX(-Math.PI / 2 + 0.25);
-    const cmat = new THREE.MeshStandardMaterial({ map: tex, side: THREE.DoubleSide, roughness: 0.9 });
-    const u = { uTime: { value: 0 } };
-    cmat.onBeforeCompile = (sh) => {
-      sh.uniforms.uTime = u.uTime;
-      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uTime;')
-        .replace('#include <begin_vertex>', '#include <begin_vertex>\ntransformed.y += sin(position.x * 2.0 + uTime * 2.0) * 0.05 * (1.0 - abs(position.x) / 2.1) + sin(position.z * 3.0 + uTime * 3.1) * 0.03;');
-    };
-    const canopy = new THREE.Mesh(cloth, cmat);
+    const canopy = new THREE.Mesh(CANOPY_GEO, canopyMat());
     canopy.position.set(0, 3.0, 0);
     canopy.castShadow = true;
-    g.add(canopy);
-    // little card stacks on the counter (one merged mesh)
-    const cards = [];
-    ['#ff6a3d', '#3db8ff', '#6fdc5a', '#ffd23d'].forEach((hex, i) => {
-      const c = new THREE.Color(hex);
-      for (let k = 0; k < 4; k++) {
-        const card = new THREE.BoxGeometry(0.35, 0.02, 0.5).toNonIndexed();
-        card.rotateY((Math.random() - 0.5) * 0.3).translate(-1.2 + i * 0.8, 1.1 + k * 0.025, 1.0);
-        const col = new Float32Array(card.attributes.position.count * 3);
-        for (let v = 0; v < col.length; v += 3) { col[v] = c.r; col[v + 1] = c.g; col[v + 2] = c.b; }
-        card.setAttribute('color', new THREE.BufferAttribute(col, 3));
-        card.deleteAttribute('uv');
-        cards.push(card);
-      }
-    });
-    g.add(new THREE.Mesh(mergeGeometries(cards), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.4, emissive: '#ffffff', emissiveIntensity: 0.08 })));
+    g.add(counter, top, canopy, new THREE.Mesh(cardStacks(), CARD_MAT));
     g.position.copy(pos);
     g.rotation.y = rot;
     this.scene.add(g);
-    this.updatables.push((t) => { u.uTime.value = t; });
-    const world = new THREE.Vector3(0, 0, 0.0).applyAxisAngle(new THREE.Vector3(0, 1, 0), rot).add(pos);
-    this.colliders.add(world.x, world.z, 2.1);
-    this.stall = { pos, rot, merchantPos: new THREE.Vector3(0, 0, -0.3).applyAxisAngle(new THREE.Vector3(0, 1, 0), rot).add(pos) };
-    const front = new THREE.Vector3(0, 0, 2.6).applyAxisAngle(new THREE.Vector3(0, 1, 0), rot).add(pos);
-    this.interactables.push({ id: 'shop', pos: front, radius: 3.2, label: 'trade with the merchant' });
+    const axis = new THREE.Vector3(0, 1, 0);
+    this.colliders.add(pos.x, pos.z, 2.1);
+    return {
+      group: g, rot,
+      merchantPos: new THREE.Vector3(0, 0, -0.3).applyAxisAngle(axis, rot).add(pos),
+      front: new THREE.Vector3(0, 0, 2.6).applyAxisAngle(axis, rot).add(pos),
+    };
   }
 
   buildDuelRing(pos) {
-    const u = { uTime: { value: 0 } };
-    const mat = new THREE.ShaderMaterial({
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      uniforms: u,
-      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-      fragmentShader: `uniform float uTime; varying vec2 vUv;
-        void main(){
-          vec2 p = vUv * 2.0 - 1.0; float r = length(p); float a = atan(p.y, p.x);
-          float ring = smoothstep(0.03, 0.0, abs(r - 0.92)) + smoothstep(0.02, 0.0, abs(r - 0.78)) * 0.7;
-          float runes = step(0.5, fract(a * 6.0 / 3.14159 + uTime * 0.1)) * smoothstep(0.03, 0.0, abs(r - 0.85)) ;
-          float star = smoothstep(0.02, 0.0, abs(r - 0.5 - 0.1 * sin(a * 5.0 + uTime * 0.5)));
-          float glow = (ring + runes * 0.8 + star * 0.6) * (0.75 + 0.25 * sin(uTime * 2.0));
-          glow += smoothstep(1.0, 0.0, r) * 0.08;
-          gl_FragColor = vec4(vec3(0.75, 0.55, 1.0) * glow, glow);
-        }`,
-    });
-    const disc = new THREE.Mesh(new THREE.PlaneGeometry(9, 9), mat);
+    const disc = new THREE.Mesh(new THREE.PlaneGeometry(9, 9), DUEL_MAT);
     disc.rotation.x = -Math.PI / 2;
     disc.position.copy(pos).add(new THREE.Vector3(0, 0.06, 0));
     this.scene.add(disc);
-    this.updatables.push((t) => { u.uTime.value = t; });
+    const b = new StaticBatcher();
     for (let i = 0; i < 6; i++) {
       const a = (i / 6) * Math.PI * 2;
-      this.put(i % 2 ? 'statue_columnDamaged' : 'statue_column', pos.x + Math.cos(a) * 5.4, pos.z + Math.sin(a) * 5.4, { s: 2.2, rot: a, collide: 0.6 });
+      const x = pos.x + Math.cos(a) * 5.4, z = pos.z + Math.sin(a) * 5.4;
+      b.add(i % 2 ? 'statue_columnDamaged' : 'statue_column', new THREE.Matrix4().compose(new THREE.Vector3(x, pos.y, z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), a), new THREE.Vector3(2.2, 2.2, 2.2)));
+      this.colliders.add(x, z, 0.6);
     }
-    this.duelRing = pos;
-    this.interactables.push({ id: 'duel', pos, radius: 4.5, label: 'duel ring — challenge a nearby player' });
+    b.build().then((g) => this.scene.add(g));
+    return pos;
   }
 
-  async buildRuins() {
-    const { x, z } = RUINS;
-    const cols = 10;
-    for (let i = 0; i < cols; i++) {
-      const a = (i / cols) * Math.PI * 2;
-      const name = i % 3 === 1 ? 'statue_columnDamaged' : 'statue_column';
-      if (i === 4) continue;
-      await this.put(name, x + Math.cos(a) * 11, z + Math.sin(a) * 11, { s: 3.2, rot: a, collide: 0.8 });
-    }
-    await this.put('statue_obelisk', x, z, { s: 3.4, collide: 1.2 });
-    await this.put('statue_head', x + 5, z - 4, { s: 3, rot: 2.2, collide: 1.2 });
-    await this.put('statue_block', x - 6, z + 3, { s: 2.5, rot: 0.4, collide: 1 });
-    await this.put('statue_ring', x - 3, z - 7, { s: 2.5, rot: 1.2, collide: 1 });
-    this.ruinsLight = this.makeGlow(new THREE.Vector3(x, this.terrain.heightAt(x, z) + 7.5, z), '#b28bff');
-  }
-
-  makeGlow(pos, color) {
-    const cv = document.createElement('canvas');
-    cv.width = cv.height = 64;
-    const g = cv.getContext('2d');
-    const grd = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-    grd.addColorStop(0, 'rgba(255,255,255,1)');
-    grd.addColorStop(0.3, 'rgba(255,255,255,0.5)');
-    grd.addColorStop(1, 'rgba(255,255,255,0)');
-    g.fillStyle = grd;
-    g.fillRect(0, 0, 64, 64);
-    const tex = new THREE.CanvasTexture(cv);
-    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
-    s.scale.setScalar(5);
+  makeGlow(pos, color, scale = 5) {
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(), color: new THREE.Color(color).multiplyScalar(2), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
+    s.scale.setScalar(scale);
     s.position.copy(pos);
     this.scene.add(s);
-    this.updatables.push((t) => { s.scale.setScalar(4.5 + Math.sin(t * 1.7) * 0.6); });
+    const phase = Math.random() * 6;
+    this.updatables.push((t) => { s.scale.setScalar(scale * (0.9 + Math.sin(t * 1.7 + phase) * 0.12)); });
     return s;
   }
 
   makeFire(pos) {
-    const u = { uTime: { value: 0 } };
-    const pts = billboards(70, u, /* glsl */ `
+    const pts = billboards(70, FIRE_UNIFORMS, /* glsl */ `
       float life = fract(uTime * (0.7 + seed.x * 0.6) + seed.y * 7.0);
       vLife = life;
       float a = seed.z * 40.0;
@@ -450,36 +359,60 @@ export class World {
       gl_FragColor = vec4(c * 2.2, a * (1.0 - vLife));`);
     pts.position.copy(pos);
     this.scene.add(pts);
-    const light = new THREE.PointLight('#ff9a4a', 30, 18, 1.6);
-    light.position.copy(pos).add(new THREE.Vector3(0, 1.2, 0));
-    this.scene.add(light);
-    this.updatables.push((t) => {
-      u.uTime.value = t;
-      light.intensity = 26 + Math.sin(t * 13) * 3 + Math.sin(t * 7.3) * 3;
-    });
     return pts;
   }
 
-  // drifting pollen / fireflies around the camera
+  // ambient particles around the camera, restyled per zone
   addMotes() {
-    const u = { uTime: { value: 0 }, uCenter: { value: new THREE.Vector3() } };
-    const pts = billboards(350, u, /* glsl */ `
-      vec3 p = (seed.xyz - 0.5) * vec3(60.0, 0.0, 60.0);
-      p.y = seed.y * 8.0;
-      p.x += sin(uTime * 0.3 + seed.z * 20.0) * 2.0;
-      p.y += sin(uTime * 0.5 + seed.x * 20.0) * 0.6;
-      p.z += cos(uTime * 0.27 + seed.y * 30.0) * 2.0;
+    const u = {
+      uTime: { value: 0 }, uCenter: { value: new THREE.Vector3() },
+      uColor: { value: new THREE.Vector3(1, 0.95, 0.7) }, uFall: { value: 0 }, uSize: { value: 0.06 },
+      uBlink: { value: 1 }, uSwirl: { value: 2 }, uBright: { value: 2 },
+    };
+    const pts = billboards(this.quality.name === 'low' ? 220 : 420, u, /* glsl */ `
+      vec3 p = vec3((seed.x - 0.5) * 60.0, 0.0, (seed.z - 0.5) * 60.0);
+      p.y = mod(seed.y * 14.0 + uTime * uFall, 14.0) - 3.0;
+      p.x += sin(uTime * 0.3 + seed.z * 20.0) * uSwirl;
+      p.y += sin(uTime * 0.5 + seed.x * 20.0) * 0.4;
+      p.z += cos(uTime * 0.27 + seed.y * 30.0) * uSwirl;
       p.xz = mod(p.xz - uCenter.xz + 30.0, 60.0) - 30.0 + uCenter.xz;
-      p.y += uCenter.y - 1.0;
+      p.y += uCenter.y;
       center = p;
-      vLife = 0.5 + 0.5 * sin(uTime * 2.0 + seed.w * 60.0);
-      size = 0.06;`, /* glsl */ `
-      gl_FragColor = vec4(vec3(1.0, 0.95, 0.7) * 2.0, a * vLife * 0.8);`, 'uniform vec3 uCenter;');
+      vLife = mix(1.0, 0.5 + 0.5 * sin(uTime * 2.0 * uBlink + seed.w * 60.0), min(uBlink, 1.0));
+      size = uSize * (0.7 + seed.w * 0.6);`, /* glsl */ `
+      gl_FragColor = vec4(uColor * uBright, a * vLife * 0.8);`,
+    'uniform vec3 uCenter; uniform vec3 uColor; uniform float uFall, uSize, uBlink, uSwirl, uBright;');
     this.scene.add(pts);
     this.motes = u;
   }
 
+  // ease fog, sky and particles toward the zone the player is in
+  updateAtmosphere(dt, p) {
+    const zw = zoneWeights(p.x, p.z);
+    this.zoneIdx = zw.idx[0];
+    const z = ZONES[this.zoneIdx];
+    const k = this.snapAtmosphere ? 1 : 1 - Math.exp(-dt * 0.8);
+    this.snapAtmosphere = false;
+    this.scene.fog.color.lerp(_c.set(z.fog), k);
+    this.scene.background.copy(this.scene.fog.color);
+    const su = this.sky.material.uniforms;
+    su.uZenith.value.lerp(_c.set(z.sky), k);
+    su.uHorizon.value.lerp(_c.set(z.horizon), k);
+    this.water.material.uniforms.uSky.value.copy(su.uHorizon.value);
+    this.water.material.uniforms.uZenith.value.copy(su.uZenith.value);
+    this.hemi.intensity += ((z.ambient || 1.3) - this.hemi.intensity) * k;
+    const P = PARTICLES[z.particles] || PARTICLES.pollen;
+    const m = this.motes;
+    m.uColor.value.lerp(_v3.set(...P.color), k);
+    m.uFall.value += (P.fall - m.uFall.value) * k;
+    m.uSize.value += (P.size - m.uSize.value) * k;
+    m.uBlink.value += (P.blink - m.uBlink.value) * k;
+    m.uSwirl.value += (P.swirl - m.uSwirl.value) * k;
+    m.uBright.value += (P.bright - m.uBright.value) * k;
+  }
+
   update(t, dt, playerPos, camera) {
+    this.terrain.update(playerPos);
     this.grass.userData.update(t, playerPos, camera);
     this.water.userData.update(t, camera);
     this.forest.update(t);
@@ -487,11 +420,90 @@ export class World {
     this.sky.material.uniforms.uTime.value = t;
     this.motes.uTime.value = t;
     this.motes.uCenter.value.copy(playerPos);
-    // keep the shadow frustum centered on the player, snapped to texels to avoid shimmer
-    const snap = (55 * 2) / 2048;
+    FIRE_UNIFORMS.uTime.value = t;
+    DUEL_MAT.uniforms.uTime.value = t;
+    CANOPY_U.uTime.value = t;
+    this.updateAtmosphere(dt, playerPos);
+    // a single point light, parked at the nearest hearth
+    let best = null, bd = 1e9;
+    for (const h of this.hubs) {
+      const d = h.pos.distanceTo(playerPos);
+      h.fire.visible = d < 250;
+      if (d < bd) { bd = d; best = h; }
+    }
+    if (best) {
+      this.hubLight.position.copy(best.firePos).add(_v3.set(0, 1.2, 0));
+      this.hubLight.intensity = bd < 120 ? 26 + Math.sin(t * 13) * 3 + Math.sin(t * 7.3) * 3 : 0;
+    }
+    // shadow frustum follows the player, snapped to texels to avoid shimmer
+    const snap = (55 * 2) / this.quality.shadow;
     const cx = Math.round(playerPos.x / snap) * snap, cz = Math.round(playerPos.z / snap) * snap;
     this.sun.target.position.set(cx, playerPos.y, cz);
-    this.sun.position.set(cx, playerPos.y, cz).addScaledVector(SUN_DIR, 150);
+    this.sun.position.set(cx, playerPos.y, cz).addScaledVector(SUN_DIR, 200);
     for (const f of this.updatables) f(t, dt);
   }
 }
+
+function disposeGroup(g) { g.traverse((o) => o.geometry?.dispose()); }
+
+const _c = new THREE.Color();
+const _v3 = new THREE.Vector3();
+const FIRE_UNIFORMS = { uTime: { value: 0 } };
+const LANTERN_POST = new THREE.MeshStandardMaterial({ color: '#4a3526', roughness: 0.9 });
+const LANTERN_LAMP = new THREE.MeshStandardMaterial({ color: '#ffcf7a', emissive: '#ffb347', emissiveIntensity: 3 });
+const STALL_WOOD = new THREE.MeshStandardMaterial({ color: '#8a5a3a', roughness: 0.9 });
+const STALL_TOP = new THREE.MeshStandardMaterial({ color: '#c89a68', roughness: 0.8 });
+const STALL_POST_GEO = new THREE.CylinderGeometry(0.1, 0.12, 3, 6);
+const CANOPY_GEO = new THREE.PlaneGeometry(4.2, 2.8, 24, 12).rotateX(-Math.PI / 2 + 0.25);
+const CANOPY_U = { uTime: { value: 0 } };
+const CARD_MAT = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.4, emissive: '#ffffff', emissiveIntensity: 0.08 });
+let canopyMaterial = null;
+function canopyMat() {
+  if (canopyMaterial) return canopyMaterial;
+  const cv = document.createElement('canvas');
+  cv.width = 256; cv.height = 8;
+  const cx = cv.getContext('2d');
+  for (let i = 0; i < 8; i++) { cx.fillStyle = i % 2 ? '#f4e9d4' : '#c8453b'; cx.fillRect(i * 32, 0, 32, 8); }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  canopyMaterial = new THREE.MeshStandardMaterial({ map: tex, side: THREE.DoubleSide, roughness: 0.9 });
+  canopyMaterial.onBeforeCompile = (sh) => {
+    sh.uniforms.uTime = CANOPY_U.uTime;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uTime;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\ntransformed.y += sin(position.x * 2.0 + uTime * 2.0) * 0.05 * (1.0 - abs(position.x) / 2.1) + sin(position.z * 3.0 + uTime * 3.1) * 0.03;');
+  };
+  return canopyMaterial;
+}
+function cardStacks() {
+  const cards = [];
+  ['#ff6a3d', '#3db8ff', '#6fdc5a', '#ffd23d'].forEach((hex, i) => {
+    const c = new THREE.Color(hex);
+    for (let k = 0; k < 4; k++) {
+      const card = new THREE.BoxGeometry(0.35, 0.02, 0.5).toNonIndexed();
+      card.rotateY(((i * 4 + k) % 5 - 2) * 0.07).translate(-1.2 + i * 0.8, 1.1 + k * 0.025, 1.0);
+      const col = new Float32Array(card.attributes.position.count * 3);
+      for (let v = 0; v < col.length; v += 3) { col[v] = c.r; col[v + 1] = c.g; col[v + 2] = c.b; }
+      card.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      card.deleteAttribute('uv');
+      cards.push(card);
+    }
+  });
+  return mergeGeometries(cards);
+}
+const DUEL_MAT = new THREE.ShaderMaterial({
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+  uniforms: { uTime: { value: 0 } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+  fragmentShader: `uniform float uTime; varying vec2 vUv;
+    void main(){
+      vec2 p = vUv * 2.0 - 1.0; float r = length(p); float a = atan(p.y, p.x);
+      float ring = smoothstep(0.03, 0.0, abs(r - 0.92)) + smoothstep(0.02, 0.0, abs(r - 0.78)) * 0.7;
+      float runes = step(0.5, fract(a * 6.0 / 3.14159 + uTime * 0.1)) * smoothstep(0.03, 0.0, abs(r - 0.85));
+      float star = smoothstep(0.02, 0.0, abs(r - 0.5 - 0.1 * sin(a * 5.0 + uTime * 0.5)));
+      float glow = (ring + runes * 0.8 + star * 0.6) * (0.75 + 0.25 * sin(uTime * 2.0));
+      glow += smoothstep(1.0, 0.0, r) * 0.08;
+      gl_FragColor = vec4(vec3(0.75, 0.55, 1.0) * glow, glow);
+    }`,
+});

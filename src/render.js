@@ -62,6 +62,8 @@ export function createComposer(renderer, scene, camera, quality) {
 export function pickQuality() {
   const mobile = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent) || window.innerWidth < 700;
   const q = new URLSearchParams(location.search).get('q');
-  if (q === 'low' || (mobile && q !== 'high')) return { name: 'low', grass: 170, grassPatch: 56, pixelRatio: 1.25, msaa: 0, shadow: 1024 };
-  return { name: 'high', grass: 400, grassPatch: 72, pixelRatio: 1.75, msaa: 4, shadow: 2048 };
+  if (q === 'low' || (mobile && q !== 'high')) {
+    return { name: 'low', grass: 170, grassPatch: 56, pixelRatio: 1.25, msaa: 0, shadow: 1024, view: 720, lodScale: 0.6, scatter: 300, fogNear: 90, fogFar: 640, mapRes: 256 };
+  }
+  return { name: 'high', grass: 400, grassPatch: 72, pixelRatio: 1.75, msaa: 4, shadow: 2048, view: 1300, lodScale: 1, scatter: 520, fogNear: 170, fogFar: 1150, mapRes: 384 };
 }

@@ -1,18 +1,19 @@
 // stylized ocean: depth-tinted, shoreline foam bands, sun glints, sky fresnel
 import * as THREE from 'three';
-import { SIZE, RES } from './terrain.js';
 import { SKY } from './sky.js';
 
+let mesh_setMap = null;
 export function createWater(terrain, sunDir) {
-  const geo = new THREE.PlaneGeometry(2400, 2400, 1, 1);
+  const geo = new THREE.PlaneGeometry(3400, 3400, 1, 1);
   geo.rotateX(-Math.PI / 2);
   const uniforms = THREE.UniformsUtils.merge([
     THREE.UniformsLib.fog,
     {
       uTime: { value: 0 },
       uData: { value: null },
-      uWorld: { value: SIZE },
-      uTexN: { value: RES + 1 },
+      uMap: { value: null },
+      uWinOrigin: { value: null },
+      uTexN: { value: 256 },
       uSun: { value: sunDir.clone() },
       uShallow: { value: new THREE.Color('#5fe3d2') },
       uMid: { value: new THREE.Color('#1fa3b8') },
@@ -21,7 +22,10 @@ export function createWater(terrain, sunDir) {
       uZenith: { value: SKY.zenith.clone() },
     },
   ]);
-  uniforms.uData.value = terrain.dataTex;
+  uniforms.uData.value = terrain.winTex;
+  uniforms.uWinOrigin.value = terrain.winOrigin;
+  uniforms.uTexN.value = terrain.winN;
+  mesh_setMap = () => { uniforms.uMap.value = terrain.mapTex; };
   const mat = new THREE.ShaderMaterial({
     uniforms,
     fog: true,
@@ -41,8 +45,9 @@ export function createWater(terrain, sunDir) {
     fragmentShader: /* glsl */ `
       #include <common>
       #include <fog_pars_fragment>
-      uniform float uTime, uWorld, uTexN;
-      uniform sampler2D uData;
+      uniform float uTime, uTexN;
+      uniform vec2 uWinOrigin;
+      uniform sampler2D uData, uMap;
       uniform vec3 uSun, uShallow, uMid, uDeep, uSky, uZenith;
       varying vec3 vW;
       float h2(vec2 p){ p = fract(p * vec2(234.34, 435.345)); p += dot(p, p + 34.23); return fract(p.x * p.y); }
@@ -54,9 +59,13 @@ export function createWater(terrain, sunDir) {
              + vn(p * 2.3 + vec2(uTime * 0.31, uTime * 0.27)) * 0.2;
       }
       void main() {
-        vec2 uv = (vW.xz / uWorld * (uTexN - 1.0) + (uTexN - 1.0) * 0.5 + 0.5) / uTexN;
-        float ground = -12.0;
-        if (uv.x > 0.0 && uv.x < 1.0 && uv.y > 0.0 && uv.y < 1.0) ground = texture2D(uData, uv).r;
+        vec2 muv = (vW.xz + 4096.0) / 8192.0;
+        vec4 mp = texture2D(uMap, muv);
+        float ground = mp.r;
+        float style = mp.g;
+        vec2 uv = ((vW.xz - uWinOrigin) * 0.5 + 0.5) / uTexN;
+        if (uv.x > 0.01 && uv.x < 0.99 && uv.y > 0.01 && uv.y < 0.99) ground = texture2D(uData, uv).r;
+        if (muv.x < 0.0 || muv.x > 1.0 || muv.y < 0.0 || muv.y > 1.0) { ground = -30.0; style = 0.0; }
         float depth = max(-ground, 0.0);
 
         // normal from animated value noise
@@ -89,6 +98,23 @@ export function createWater(terrain, sunDir) {
 
         float alpha = mix(0.55, 0.96, smoothstep(0.0, 2.0, depth));
         alpha = max(alpha, foam);
+        // swamp: murky green-brown, little foam
+        float swamp = smoothstep(0.25, 0.5, style) * (1.0 - smoothstep(0.75, 0.95, style));
+        vec3 murk = mix(vec3(0.16, 0.2, 0.08), vec3(0.3, 0.34, 0.14), w0) + vec3(1.0, 0.85, 0.6) * spec * 1.5;
+        col = mix(col, murk, swamp);
+        alpha = mix(alpha, 0.93, swamp);
+        // lava: slow glowing crust
+        float lava = smoothstep(0.75, 0.95, style);
+        if (lava > 0.0) {
+          vec2 lp = vW.xz * 0.12 + vec2(uTime * 0.03, uTime * 0.02);
+          float crust = vn(lp) * 0.6 + vn(lp * 2.7 - uTime * 0.05) * 0.4;
+          float cracks = smoothstep(0.42, 0.5, crust) * (1.0 - smoothstep(0.5, 0.62, crust));
+          vec3 hot = mix(vec3(3.2, 0.9, 0.12), vec3(4.0, 2.0, 0.3), vn(lp * 4.0 + uTime * 0.2));
+          vec3 lc = mix(hot, vec3(0.08, 0.04, 0.03), smoothstep(0.45, 0.75, crust));
+          lc += hot * cracks * 0.8;
+          col = mix(col, lc, lava);
+          alpha = mix(alpha, 1.0, lava);
+        }
         gl_FragColor = vec4(col, alpha);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
@@ -98,6 +124,7 @@ export function createWater(terrain, sunDir) {
   const mesh = new THREE.Mesh(geo, mat);
   mesh.position.y = 0;
   mesh.renderOrder = 2;
+  mesh.userData.setMap = () => mesh_setMap?.();
   mesh.userData.update = (t, cam) => {
     uniforms.uTime.value = t;
     mesh.position.x = Math.round(cam.position.x / 50) * 50;

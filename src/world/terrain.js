@@ -1,109 +1,249 @@
-// procedural island: heightfield, biome map, colors, and the terrain mesh.
-// everything derives from WORLD_SEED so every client generates the same island.
+// streamed continent terrain: chunks generated in workers, drawn at distance-based lod,
+// plus gpu-side data textures (a local window around the player and a coarse world map)
 import * as THREE from 'three';
-import { makeNoise } from './noise.js';
+import { CHUNK, ZONES, WORLD_HALF } from './zones.js';
+import * as G from './gen.js';
 
-export const WORLD_SEED = 7331;
-export const SIZE = 640; // world extent in meters
-export const RES = 320; // cells per side
-export const CELL = SIZE / RES;
-export const ISLAND_R = 235;
-export const TOWN_R = 26;
-export const TOWN_H = 5.2;
-
-const N = makeNoise(WORLD_SEED);
-const N2 = makeNoise(WORLD_SEED + 1);
-
-// dirt paths from town out to each region (polyline control points)
-export const PATHS = [
-  [[0, 0], [10, 40], [-6, 85], [12, 130], [0, 175]], // south: meadow & pond
-  [[0, 0], [45, -8], [95, 6], [140, -10], [180, 4]], // east: forest
-  [[0, 0], [-8, -45], [6, -90], [-14, -135], [-4, -170]], // north: highlands & ruins
-  [[0, 0], [-45, 12], [-95, -4], [-150, 20]], // west: coast
-];
-export const POND = { x: -70, z: 95, r: 26 };
-export const RUINS = { x: -10, z: -165 };
-
-function smoothstep(a, b, x) {
-  const t = Math.min(Math.max((x - a) / (b - a), 0), 1);
-  return t * t * (3 - 2 * t);
-}
-const lerp = (a, b, t) => a + (b - a) * t;
-
-function distToSeg(px, pz, ax, az, bx, bz) {
-  const dx = bx - ax, dz = bz - az;
-  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / (dx * dx + dz * dz)));
-  const x = ax + dx * t - px, z = az + dz * t - pz;
-  return Math.sqrt(x * x + z * z);
-}
-export function pathDist(x, z) {
-  // wobble the path so it isn't ruler-straight
-  const wx = x + N2.noise2(x * 0.03, z * 0.03) * 4;
-  const wz = z + N2.noise2(x * 0.03 + 40, z * 0.03) * 4;
-  let d = Infinity;
-  for (const p of PATHS) for (let i = 0; i < p.length - 1; i++) {
-    d = Math.min(d, distToSeg(wx, wz, p[i][0], p[i][1], p[i + 1][0], p[i + 1][1]));
-  }
-  return d;
-}
-
-// raw height function (expensive; used to bake the grid)
-function rawHeight(x, z) {
-  const r = Math.sqrt(x * x + z * z);
-  let d = r / ISLAND_R + N.fbm(x * 0.006, z * 0.006, 3) * 0.22;
-  const mask = smoothstep(1.02, 0.62, d);
-
-  let h = 3.5 + 7 * (N.fbm(x * 0.009, z * 0.009, 4) * 0.5 + 0.5);
-  // highlands to the north: ridged mountains
-  const north = smoothstep(-40, -150, z + N.noise2(x * 0.01, 3) * 30);
-  const ridge = 1 - Math.abs(N.fbm(x * 0.014, z * 0.014, 4));
-  h += north * (ridge * ridge * 26 + 5);
-  // gentle forest hills to the east
-  const east = smoothstep(40, 120, x);
-  h += east * N.fbm(x * 0.02 + 9, z * 0.02, 3) * 4;
-
-  h = lerp(-9, h, mask);
-
-  // pond
-  const pd = Math.hypot(x - POND.x, z - POND.z) + N.noise2(x * 0.05, z * 0.05) * 6;
-  h = lerp(h, -2.2, smoothstep(POND.r, POND.r * 0.45, pd));
-
-  // ruins plateau
-  const rd = Math.hypot(x - RUINS.x, z - RUINS.z);
-  h = lerp(h, 22, smoothstep(30, 18, rd));
-
-  // flatten paths a little
-  const pdist = pathDist(x, z);
-  const pathT = smoothstep(7, 2, pdist) * mask;
-  h = lerp(h, h * 0.85 + 0.6, pathT * 0.35);
-
-  // town plateau
-  const townT = smoothstep(TOWN_R + 18, TOWN_R - 4, r);
-  h = lerp(h, TOWN_H, townT);
-  return h;
-}
+const LOD_DIST = [210, 460, 820, 1400];
 
 export class Terrain {
-  constructor() {
-    const n = RES + 1;
-    this.n = n;
-    this.h = new Float32Array(n * n);
-    this.path = new Float32Array(n * n);
-    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
-      const x = -SIZE / 2 + i * CELL, z = -SIZE / 2 + j * CELL;
-      this.h[j * n + i] = rawHeight(x, z);
-      this.path[j * n + i] = pathDist(x, z);
+  constructor(scene, quality) {
+    this.scene = scene;
+    this.quality = quality;
+    this.view = quality.view;
+    this.chunks = new Map();
+    this.inflight = 0;
+    this.listeners = { scatter: [], unload: [] };
+    this.group = new THREE.Group();
+    scene.add(this.group);
+    this.material = makeMaterial();
+    this.indexCache = new Map();
+    const nw = Math.max(1, Math.min(3, (navigator.hardwareConcurrency || 4) - 1));
+    this.workers = [];
+    this.pending = new Map();
+    this.reqId = 0;
+    for (let i = 0; i < nw; i++) {
+      const w = new Worker(new URL('./chunkworker.js', import.meta.url), { type: 'module' });
+      w.onmessage = (e) => this.onMessage(e.data);
+      w.onerror = (e) => console.error('chunk worker error', e.message || e);
+      this.workers.push(w);
+    }
+    this.nextWorker = 0;
+    // local data window (2m texels) for grass + shoreline
+    this.winN = 256;
+    this.winSize = this.winN * 2;
+    this.winOrigin = new THREE.Vector2(1e9, 1e9);
+    this.winData = new Uint16Array(this.winN * this.winN * 4);
+    this.winCol = new Uint8Array(this.winN * this.winN * 4);
+    this.winTex = new THREE.DataTexture(this.winData, this.winN, this.winN, THREE.RGBAFormat, THREE.HalfFloatType);
+    this.winTex.magFilter = this.winTex.minFilter = THREE.LinearFilter;
+    this.winColTex = new THREE.DataTexture(this.winCol, this.winN, this.winN, THREE.RGBAFormat);
+    this.winColTex.magFilter = this.winColTex.minFilter = THREE.LinearFilter;
+    this.winDirty = true;
+    this.lastWinBuild = 0;
+  }
+
+  on(ev, fn) { this.listeners[ev].push(fn); }
+
+  post(msg) {
+    const w = this.workers[this.nextWorker++ % this.workers.length];
+    w.postMessage(msg);
+  }
+
+  // coarse whole-world map (minimap, world map, distant water)
+  loadMap(res = 384) {
+    return new Promise((resolve) => {
+      const id = ++this.reqId;
+      this.pending.set(id, (map) => {
+        this.map = map;
+        const n = map.res;
+        const data = new Uint16Array(n * n * 4);
+        for (let k = 0; k < n * n; k++) {
+          data[k * 4] = THREE.DataUtils.toHalfFloat(map.h[k]);
+          data[k * 4 + 1] = THREE.DataUtils.toHalfFloat(map.water[k]);
+          data[k * 4 + 2] = THREE.DataUtils.toHalfFloat(map.zone[k]);
+          data[k * 4 + 3] = THREE.DataUtils.toHalfFloat(1);
+        }
+        this.mapTex = new THREE.DataTexture(data, n, n, THREE.RGBAFormat, THREE.HalfFloatType);
+        this.mapTex.magFilter = this.mapTex.minFilter = THREE.LinearFilter;
+        this.mapTex.needsUpdate = true;
+        resolve(map);
+      });
+      this.post({ type: 'map', res, id });
+    });
+  }
+
+  onMessage(m) {
+    if (m.type === 'map') { this.pending.get(m.id)?.(m.map); this.pending.delete(m.id); return; }
+    const c = m.chunk;
+    this.inflight--;
+    const key = `${c.cx}:${c.cz}`;
+    const ch = this.chunks.get(key);
+    if (!ch || ch.want === undefined) return;
+    ch.requested = -1;
+    if (c.lod !== ch.lod) this.buildMesh(ch, c);
+    if (c.lod === 0) { ch.data0 = c; this.winDirty = true; }
+    if (!ch.dataAny || c.lod <= ch.dataAny.lod) ch.dataAny = c;
+    if (c.trees && !ch.scattered) {
+      ch.scattered = true;
+      for (const fn of this.listeners.scatter) fn(key, c, ch);
     }
   }
 
-  // exact height on the triangulated mesh
+  edgeList(n) {
+    const e = [];
+    for (let i = 0; i < n - 1; i++) e.push(i);
+    for (let j = 0; j < n - 1; j++) e.push(j * n + n - 1);
+    for (let i = n - 1; i > 0; i--) e.push((n - 1) * n + i);
+    for (let j = n - 1; j > 0; j--) e.push(j * n);
+    return e;
+  }
+
+  indices(n) {
+    if (this.indexCache.has(n)) return this.indexCache.get(n);
+    const idx = [];
+    for (let j = 0; j < n - 1; j++) for (let i = 0; i < n - 1; i++) {
+      const a = j * n + i, b = a + 1, d = a + n, e = d + 1;
+      idx.push(a, d, b, b, d, e);
+    }
+    // skirts: an extra ring of vertices hanging below the edge hides lod cracks
+    const base = n * n;
+    const edge = this.edgeList(n);
+    for (let k = 0; k < edge.length; k++) {
+      const a = edge[k], b = edge[(k + 1) % edge.length];
+      const sa = base + k, sb = base + ((k + 1) % edge.length);
+      idx.push(a, sa, b, b, sa, sb, a, b, sa, b, sb, sa);
+    }
+    const total = n * n + edge.length;
+    const attr = new THREE.BufferAttribute(total > 65535 ? new Uint32Array(idx) : new Uint16Array(idx), 1);
+    this.indexCache.set(n, attr);
+    return attr;
+  }
+
+  buildMesh(ch, c) {
+    const { n, step, heights, normals, colors, stone } = c;
+    const edge = this.edgeList(n);
+    const total = n * n + edge.length;
+    const pos = new Float32Array(total * 3);
+    const nor = new Float32Array(total * 3);
+    const col = new Float32Array(total * 3);
+    const st = new Float32Array(total);
+    const x0 = c.cx * CHUNK, z0 = c.cz * CHUNK;
+    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+      const k = j * n + i;
+      pos[k * 3] = x0 + i * step; pos[k * 3 + 1] = heights[k]; pos[k * 3 + 2] = z0 + j * step;
+    }
+    nor.set(normals);
+    col.set(colors);
+    st.set(stone);
+    const drop = step * 1.5 + 2;
+    edge.forEach((v, k) => {
+      const t = n * n + k;
+      pos[t * 3] = pos[v * 3]; pos[t * 3 + 1] = pos[v * 3 + 1] - drop; pos[t * 3 + 2] = pos[v * 3 + 2];
+      nor[t * 3] = nor[v * 3]; nor[t * 3 + 1] = nor[v * 3 + 1]; nor[t * 3 + 2] = nor[v * 3 + 2];
+      col[t * 3] = col[v * 3]; col[t * 3 + 1] = col[v * 3 + 1]; col[t * 3 + 2] = col[v * 3 + 2];
+      st[t] = st[v];
+    });
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    g.setAttribute('aStone', new THREE.BufferAttribute(st, 1));
+    g.setIndex(this.indices(n));
+    g.computeBoundingSphere();
+    const mesh = new THREE.Mesh(g, this.material);
+    mesh.receiveShadow = true;
+    mesh.castShadow = c.lod === 0;
+    if (ch.mesh) { this.group.remove(ch.mesh); ch.mesh.geometry.dispose(); }
+    ch.mesh = mesh;
+    ch.lod = c.lod;
+    this.group.add(mesh);
+  }
+
+  rectDist(cx, cz, p) {
+    const ex = Math.max(cx * CHUNK - p.x, 0, p.x - (cx + 1) * CHUNK);
+    const ez = Math.max(cz * CHUNK - p.z, 0, p.z - (cz + 1) * CHUNK);
+    return Math.hypot(ex, ez);
+  }
+
+  // decide which chunks should exist at which lod; queue work nearest-first
+  update(p) {
+    const R = this.view;
+    const c0x = Math.floor(p.x / CHUNK), c0z = Math.floor(p.z / CHUNK);
+    const rc = Math.ceil(R / CHUNK) + 1;
+    for (const ch of this.chunks.values()) ch.dist = this.rectDist(ch.cx, ch.cz, p);
+    for (let dz = -rc; dz <= rc; dz++) for (let dx = -rc; dx <= rc; dx++) {
+      const cx = c0x + dx, cz = c0z + dz;
+      if (Math.abs((cx + 0.5) * CHUNK) > WORLD_HALF || Math.abs((cz + 0.5) * CHUNK) > WORLD_HALF) continue;
+      const d = this.rectDist(cx, cz, p);
+      if (d > R) continue;
+      let lod = 0;
+      while (lod < 3 && d > LOD_DIST[lod] * this.quality.lodScale) lod++;
+      const key = `${cx}:${cz}`;
+      let ch = this.chunks.get(key);
+      if (!ch) { ch = { cx, cz, lod: -1, requested: -1, mesh: null, scattered: false }; this.chunks.set(key, ch); }
+      ch.want = lod;
+      ch.dist = d;
+      ch.needScatter = d < this.quality.scatter;
+    }
+    for (const [key, ch] of this.chunks) {
+      if (ch.dist > R + 160) { this.unload(key, ch); continue; }
+      if (ch.scattered && ch.dist > this.quality.scatter + 120) {
+        ch.scattered = false;
+        for (const fn of this.listeners.unload) fn(key, ch);
+      }
+      if (ch.data0 && ch.dist > LOD_DIST[0] * this.quality.lodScale + 150) ch.data0 = null;
+    }
+    // queue requests
+    const todo = [];
+    for (const ch of this.chunks.values()) {
+      if (ch.want === undefined || ch.requested >= 0) continue;
+      const needMesh = ch.lod !== ch.want;
+      const needScatter = ch.needScatter && !ch.scattered;
+      if (needMesh || needScatter || (ch.want === 0 && !ch.data0)) todo.push(ch);
+    }
+    todo.sort((a, b) => a.dist - b.dist);
+    const maxInflight = this.workers.length * 3;
+    for (const ch of todo) {
+      if (this.inflight >= maxInflight) break;
+      ch.requested = ch.want;
+      this.inflight++;
+      this.post({ type: 'chunk', cx: ch.cx, cz: ch.cz, lod: ch.want, scatter: ch.needScatter && !ch.scattered });
+    }
+    const cx = this.winOrigin.x + this.winSize / 2, cz = this.winOrigin.y + this.winSize / 2;
+    if (this.winDirty || Math.abs(p.x - cx) > 48 || Math.abs(p.z - cz) > 48) {
+      const now = performance.now();
+      if (now - this.lastWinBuild > 350) { this.lastWinBuild = now; this.buildWindow(p); }
+    }
+  }
+
+  unload(key, ch) {
+    if (ch.mesh) { this.group.remove(ch.mesh); ch.mesh.geometry.dispose(); }
+    if (ch.scattered) for (const fn of this.listeners.unload) fn(key, ch);
+    ch.want = undefined;
+    this.chunks.delete(key);
+  }
+
+  // how many chunks near p still need their first mesh or scatter
+  pendingNear(p, r = 200) {
+    let k = 0;
+    for (const ch of this.chunks.values()) if (ch.dist < r && (ch.lod < 0 || (ch.needScatter && !ch.scattered))) k++;
+    return k;
+  }
+
+  chunkData(x, z) {
+    const ch = this.chunks.get(`${Math.floor(x / CHUNK)}:${Math.floor(z / CHUNK)}`);
+    return ch ? (ch.data0 || ch.dataAny) : null;
+  }
+
   heightAt(x, z) {
-    const fx0 = (x + SIZE / 2) / CELL, fz0 = (z + SIZE / 2) / CELL;
-    if (fx0 < 0 || fz0 < 0 || fx0 >= RES || fz0 >= RES) return -9;
-    const i = Math.floor(fx0), j = Math.floor(fz0);
+    const c = this.chunkData(x, z);
+    if (!c) return G.height(x, z);
+    const { n, step, heights } = c;
+    const fx0 = (x - c.cx * CHUNK) / step, fz0 = (z - c.cz * CHUNK) / step;
+    const i = Math.min(n - 2, Math.max(0, Math.floor(fx0))), j = Math.min(n - 2, Math.max(0, Math.floor(fz0)));
     const fx = fx0 - i, fz = fz0 - j;
-    const n = this.n, H = this.h;
-    const h00 = H[j * n + i], h10 = H[j * n + i + 1], h01 = H[(j + 1) * n + i], h11 = H[(j + 1) * n + i + 1];
+    const h00 = heights[j * n + i], h10 = heights[j * n + i + 1], h01 = heights[(j + 1) * n + i], h11 = heights[(j + 1) * n + i + 1];
     if (fx + fz <= 1) return h00 + (h10 - h00) * fx + (h01 - h00) * fz;
     return h11 + (h01 - h11) * (1 - fx) + (h10 - h11) * (1 - fz);
   }
@@ -113,123 +253,74 @@ export class Terrain {
     const hz = this.heightAt(x, z + e) - this.heightAt(x, z - e);
     return out.set(-hx, 2 * e, -hz).normalize();
   }
-  slopeAt(x, z) {
-    return 1 - this.normalAt(x, z, _v).y;
-  }
-  pathAt(x, z) {
-    const i = Math.round((x + SIZE / 2) / CELL), j = Math.round((z + SIZE / 2) / CELL);
-    if (i < 0 || j < 0 || i > RES || j > RES) return 99;
-    return this.path[j * this.n + i];
-  }
-  // biome name at a position, for spawns and props
-  biomeAt(x, z) {
-    const h = this.heightAt(x, z);
-    if (h < 1.4) return 'beach';
-    if (z < -60 && h > 11) return 'highland';
-    if (x > 45 + N.noise2(z * 0.01, 7) * 25) return 'forest';
-    return 'meadow';
-  }
-  // how much grass grows here, 0..1
-  grassAt(x, z) {
-    const h = this.heightAt(x, z);
-    const slope = this.slopeAt(x, z);
-    const r = Math.hypot(x, z);
-    let g = smoothstep(1.3, 2.4, h) * smoothstep(0.32, 0.18, slope);
-    g *= smoothstep(1.2, 3.2, this.pathAt(x, z));
-    g *= smoothstep(TOWN_R - 10, TOWN_R - 4, r);
-    const rd = Math.hypot(x - RUINS.x, z - RUINS.z);
-    g *= smoothstep(10, 20, rd) * 0.8 + 0.2;
-    // patchiness
-    g *= smoothstep(-0.55, -0.1, N2.fbm(x * 0.04, z * 0.04, 2));
-    return g;
-  }
-  levelAt(x, z) {
-    const r = Math.hypot(x, z);
-    const h = this.heightAt(x, z);
-    return Math.max(1, Math.min(6, 1 + Math.floor((r - 30) / 45) + (h > 18 ? 1 : 0)));
-  }
+  slopeAt(x, z) { return 1 - this.normalAt(x, z, _v).y; }
+  zoneAt(x, z) { return ZONES[G.zoneIndexAt(x, z)]; }
+  levelAt(x, z) { return G.levelAt(x, z); }
 
-  colorAt(x, z, out = new THREE.Color()) {
-    const h = this.heightAt(x, z);
-    const slope = this.slopeAt(x, z);
-    const biome = this.biomeAt(x, z);
-    const v = N2.fbm(x * 0.05, z * 0.05, 3) * 0.5 + 0.5;
-    const v2 = N.noise2(x * 0.15, z * 0.15) * 0.5 + 0.5;
-
-    // grass tone per biome
-    if (biome === 'forest') out.copy(C.forestA).lerp(C.forestB, v);
-    else if (biome === 'highland') out.copy(C.highA).lerp(C.highB, v);
-    else out.copy(C.meadowA).lerp(C.meadowB, v);
-    out.lerp(C.meadowTip, v2 * 0.12);
-
-    // rock on steep slopes and high peaks
-    const rockT = smoothstep(0.22, 0.38, slope) + smoothstep(26, 34, h);
-    if (rockT > 0) out.lerp(_c.copy(C.rockA).lerp(C.rockB, v2), Math.min(1, rockT));
-
-    // sand near water
-    const sandT = smoothstep(2.2, 1.0, h);
-    if (sandT > 0) out.lerp(_c.copy(C.sand).lerp(C.sandWet, smoothstep(0.6, -0.4, h)), sandT);
-    if (h < -0.4) out.lerp(C.seabed, smoothstep(-0.4, -6, h));
-
-    // paths
-    const pd = this.pathAt(x, z);
-    const pathT = smoothstep(3.2, 1.4, pd + v2 * 0.8) * smoothstep(0.8, 1.6, h);
-    if (pathT > 0) out.lerp(_c.copy(C.path).lerp(C.pathB, v), pathT);
-
-    // town plaza stone
-    const r = Math.hypot(x, z);
-    const plaza = smoothstep(TOWN_R - 9, TOWN_R - 11, r + v2 * 1.5);
-    if (plaza > 0) out.lerp(_c.copy(C.plaza).lerp(C.plazaB, v2), plaza);
-    const rd = Math.hypot(x - RUINS.x, z - RUINS.z);
-    const rplaza = smoothstep(15, 12, rd + v2 * 2);
-    if (rplaza > 0) out.lerp(_c.copy(C.ruinStone).lerp(C.plazaB, v2 * 0.5), rplaza);
-    return out;
-  }
-
-  buildMesh() {
-    const n = this.n;
-    const pos = new Float32Array(n * n * 3);
-    const col = new Float32Array(n * n * 3);
-    const mask = new Float32Array(n * n);
-    const c = new THREE.Color();
-    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
-      const k = j * n + i;
-      const x = -SIZE / 2 + i * CELL, z = -SIZE / 2 + j * CELL;
-      pos[k * 3] = x; pos[k * 3 + 1] = this.h[k]; pos[k * 3 + 2] = z;
-      this.colorAt(x, z, c);
-      col[k * 3] = c.r; col[k * 3 + 1] = c.g; col[k * 3 + 2] = c.b;
-      const r = Math.hypot(x, z);
-      const rd = Math.hypot(x - RUINS.x, z - RUINS.z);
-      mask[k] = Math.max(smoothstep(TOWN_R - 8, TOWN_R - 11, r), smoothstep(14, 11, rd));
+  // fill the local data window around p from chunk data (grass density/height, color)
+  buildWindow(p) {
+    const N = this.winN, S = 2;
+    const ox = Math.round((p.x - this.winSize / 2) / S) * S, oz = Math.round((p.z - this.winSize / 2) / S) * S;
+    this.winOrigin.set(ox, oz);
+    const d = this.winData, col = this.winCol;
+    const H = THREE.DataUtils.toHalfFloat;
+    const one = H(1);
+    let missing = 0;
+    let cache = null, cacheKey = '';
+    for (let j = 0; j < N; j++) {
+      const z = oz + j * S;
+      for (let i = 0; i < N; i++) {
+        const x = ox + i * S;
+        const k = (j * N + i) * 4;
+        const key = `${Math.floor(x / CHUNK)}:${Math.floor(z / CHUNK)}`;
+        if (key !== cacheKey) { cacheKey = key; const ch = this.chunks.get(key); cache = ch ? (ch.data0 || ch.dataAny) : null; }
+        const c = cache;
+        if (!c) {
+          missing++;
+          d[k] = H(this.mapHeight(x, z)); d[k + 1] = 0; d[k + 2] = 0; d[k + 3] = one;
+          continue;
+        }
+        const ci = Math.min(c.n - 1, Math.round((x - c.cx * CHUNK) / c.step));
+        const cj = Math.min(c.n - 1, Math.round((z - c.cz * CHUNK) / c.step));
+        const q = cj * c.n + ci;
+        d[k] = H(c.heights[q]);
+        if (c.grass) { d[k + 1] = H(c.grass[q * 2]); d[k + 2] = H(c.grass[q * 2 + 1]); } else { d[k + 1] = 0; d[k + 2] = 0; }
+        d[k + 3] = one;
+        // linear values: the grass shader treats this texture as linear color
+        col[k] = Math.min(255, c.colors[q * 3] * 255);
+        col[k + 1] = Math.min(255, c.colors[q * 3 + 1] * 255);
+        col[k + 2] = Math.min(255, c.colors[q * 3 + 2] * 255);
+        col[k + 3] = 255;
+      }
     }
-    const idx = new Uint32Array(RES * RES * 6);
-    let p = 0;
-    for (let j = 0; j < RES; j++) for (let i = 0; i < RES; i++) {
-      const a = j * n + i, b = j * n + i + 1, d = (j + 1) * n + i, e = (j + 1) * n + i + 1;
-      // diagonal from (1,0) to (0,1), matching heightAt
-      idx[p++] = a; idx[p++] = d; idx[p++] = b;
-      idx[p++] = b; idx[p++] = d; idx[p++] = e;
-    }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    g.setAttribute('aStone', new THREE.BufferAttribute(mask, 1));
-    g.setIndex(new THREE.BufferAttribute(idx, 1));
-    g.computeVertexNormals();
-    this.colors = col;
+    this.winTex.needsUpdate = true;
+    this.winColTex.needsUpdate = true;
+    this.winDirty = missing > 0;
+  }
 
-    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0 });
-    mat.onBeforeCompile = (sh) => {
-      // fine-grained color breakup so close-up ground isn't flat
-      sh.vertexShader = sh.vertexShader
-        .replace('#include <common>', '#include <common>\nvarying vec3 vWPos;\nattribute float aStone;\nvarying float vStone;')
-        .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvStone = aStone;');
-      sh.fragmentShader = sh.fragmentShader
-        .replace('#include <common>', `#include <common>
+  mapHeight(x, z) {
+    const m = this.map;
+    if (!m) return -10;
+    const n = m.res;
+    const i = Math.max(0, Math.min(n - 1, Math.floor((x + 4096) / 8192 * n)));
+    const j = Math.max(0, Math.min(n - 1, Math.floor((z + 4096) / 8192 * n)));
+    return m.h[j * n + i];
+  }
+}
+
+const _v = new THREE.Vector3();
+
+function makeMaterial() {
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0 });
+  mat.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vWPos;\nattribute float aStone;\nvarying float vStone;')
+      .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvStone = aStone;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', `#include <common>
 varying vec3 vWPos;
 varying float vStone;
 vec2 hash22(vec2 p){ p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3))); return fract(sin(p) * 43758.5453); }
-// cobblestones: voronoi cell edges
 vec2 cobble(vec2 p){ vec2 i = floor(p), f = fract(p); float d1 = 8.0, d2 = 8.0; vec2 id = vec2(0.0);
   for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) { vec2 g = vec2(x, y); vec2 o = hash22(i + g) * 0.8 + 0.1;
     float d = length(g + o - f); if (d < d1) { d2 = d1; d1 = d; id = i + g; } else if (d < d2) d2 = d; }
@@ -237,7 +328,7 @@ vec2 cobble(vec2 p){ vec2 i = floor(p), f = fract(p); float d1 = 8.0, d2 = 8.0; 
 float hash21(vec2 p){ p = fract(p*vec2(123.34, 456.21)); p += dot(p, p+45.32); return fract(p.x*p.y); }
 float vnoise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
   return mix(mix(hash21(i),hash21(i+vec2(1,0)),f.x), mix(hash21(i+vec2(0,1)),hash21(i+vec2(1,1)),f.x), f.y); }`)
-        .replace('#include <color_fragment>', `#include <color_fragment>
+      .replace('#include <color_fragment>', `#include <color_fragment>
 float n1 = vnoise(vWPos.xz*0.9)*0.6 + vnoise(vWPos.xz*3.1)*0.4;
 diffuseColor.rgb *= 0.88 + n1*0.24;
 if (vStone > 0.01) {
@@ -247,71 +338,6 @@ if (vStone > 0.01) {
   stone = mix(diffuseColor.rgb * 0.55, stone, grout);
   diffuseColor.rgb = mix(diffuseColor.rgb, stone, vStone);
 }`);
-    };
-    const mesh = new THREE.Mesh(g, mat);
-    mesh.receiveShadow = true;
-    this.mesh = mesh;
-    return mesh;
-  }
-
-  // textures for gpu-side sampling (grass, water)
-  buildTextures() {
-    const n = this.n;
-    const data = new Float32Array(n * n * 4);
-    const c = new THREE.Color();
-    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
-      const k = j * n + i;
-      const x = -SIZE / 2 + i * CELL, z = -SIZE / 2 + j * CELL;
-      data[k * 4] = this.h[k];
-      data[k * 4 + 1] = this.grassAt(x, z);
-      data[k * 4 + 2] = this.biomeAt(x, z) === 'forest' ? 1 : 0;
-      data[k * 4 + 3] = this.biomeAt(x, z) === 'highland' ? 1 : 0;
-    }
-    // half floats: linear filtering of half-float textures is core in webgl2
-    const half = new Uint16Array(data.length);
-    for (let i = 0; i < data.length; i++) half[i] = THREE.DataUtils.toHalfFloat(data[i]);
-    const tex = new THREE.DataTexture(half, n, n, THREE.RGBAFormat, THREE.HalfFloatType);
-    tex.magFilter = THREE.LinearFilter;
-    tex.minFilter = THREE.LinearFilter;
-    tex.needsUpdate = true;
-    this.dataTex = tex;
-
-    const cdata = new Uint8Array(n * n * 4);
-    for (let k = 0; k < n * n; k++) {
-      c.setRGB(this.colors[k * 3], this.colors[k * 3 + 1], this.colors[k * 3 + 2]);
-      cdata[k * 4] = Math.round(c.r * 255);
-      cdata[k * 4 + 1] = Math.round(c.g * 255);
-      cdata[k * 4 + 2] = Math.round(c.b * 255);
-      cdata[k * 4 + 3] = 255;
-    }
-    const ctex = new THREE.DataTexture(cdata, n, n, THREE.RGBAFormat);
-    ctex.magFilter = THREE.LinearFilter;
-    ctex.minFilter = THREE.LinearFilter;
-    ctex.needsUpdate = true;
-    this.colorTex = ctex;
-  }
+  };
+  return mat;
 }
-
-const _v = new THREE.Vector3();
-const _c = new THREE.Color();
-// colors are linear (three converts hex → linear for Color.set)
-const C = {
-  meadowA: new THREE.Color('#5f9c3a'),
-  meadowB: new THREE.Color('#8cb84a'),
-  meadowTip: new THREE.Color('#d6d36a'),
-  forestA: new THREE.Color('#2f6b35'),
-  forestB: new THREE.Color('#4f8a3a'),
-  highA: new THREE.Color('#7d8f4e'),
-  highB: new THREE.Color('#a39a5c'),
-  rockA: new THREE.Color('#a39587'),
-  rockB: new THREE.Color('#c2b29a'),
-  sand: new THREE.Color('#e9d39b'),
-  sandWet: new THREE.Color('#bfa36e'),
-  seabed: new THREE.Color('#3f8f8a'),
-  path: new THREE.Color('#b78f5c'),
-  pathB: new THREE.Color('#a07a4b'),
-  plaza: new THREE.Color('#b9ad9a'),
-  plazaB: new THREE.Color('#9e927f'),
-  ruinStone: new THREE.Color('#a8a090'),
-};
-export const TERRAIN_COLORS = C;

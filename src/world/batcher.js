@@ -1,26 +1,15 @@
-// merges many static gltf props into one vertex-colored mesh per map tile,
-// so the whole island's props cost a handful of draw calls
+// merges many static gltf props into vertex-colored meshes (one per shadow flag),
+// so a chunk's props cost a couple of draw calls
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { loadGLTF, natureUrl, recolor } from './assets.js';
 
-const TILE = 64;
+const partCache = new Map(); // name -> Promise<[{ geometry, local }]>
+const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0 });
 
-export class StaticBatcher {
-  constructor() {
-    this.items = []; // { name, matrix, shadow }
-    this.material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0 });
-  }
-
-  add(name, matrix, shadow = true) {
-    this.items.push({ name, matrix, shadow });
-  }
-
-  async build(scene) {
-    const names = [...new Set(this.items.map((i) => i.name))];
-    const parts = {}; // name -> [{ geometry (with color), local matrix }]
-    await Promise.all(names.map(async (name) => {
-      const gltf = await loadGLTF(natureUrl(name));
+function parts(name) {
+  if (!partCache.has(name)) {
+    partCache.set(name, loadGLTF(natureUrl(name)).then((gltf) => {
       gltf.scene.updateMatrixWorld(true);
       const list = [];
       gltf.scene.traverse((o) => {
@@ -39,30 +28,50 @@ export class StaticBatcher {
         clean.setAttribute('color', new THREE.BufferAttribute(col, 3));
         list.push({ geometry: clean, local: o.matrixWorld.clone() });
       });
-      parts[name] = list;
-    }));
+      return list;
+    }).catch((e) => { console.warn('missing model', name, e); return []; }));
+  }
+  return partCache.get(name);
+}
 
-    const buckets = new Map();
+export class StaticBatcher {
+  constructor() { this.items = []; }
+
+  // tint: optional [r, g, b] multiplier
+  add(name, matrix, shadow = true, tint = null) {
+    this.items.push({ name, matrix, shadow, tint });
+  }
+
+  // returns a group with up to two merged meshes (shadow casters and not)
+  async build() {
+    const names = [...new Set(this.items.map((i) => i.name))];
+    const loaded = {};
+    await Promise.all(names.map(async (n) => { loaded[n] = await parts(n); }));
+    const buckets = [[], []];
     const m = new THREE.Matrix4();
     for (const it of this.items) {
-      const p = new THREE.Vector3().setFromMatrixPosition(it.matrix);
-      const key = `${Math.floor(p.x / TILE)}:${Math.floor(p.z / TILE)}:${it.shadow ? 1 : 0}`;
-      if (!buckets.has(key)) buckets.set(key, []);
-      for (const part of parts[it.name]) {
+      for (const part of loaded[it.name]) {
         m.multiplyMatrices(it.matrix, part.local);
-        buckets.get(key).push(part.geometry.clone().applyMatrix4(m));
+        const g = part.geometry.clone().applyMatrix4(m);
+        if (it.tint) {
+          const c = g.attributes.color = g.attributes.color.clone();
+          for (let i = 0; i < c.count; i++) c.setXYZ(i, c.getX(i) * it.tint[0], c.getY(i) * it.tint[1], c.getZ(i) * it.tint[2]);
+        }
+        buckets[it.shadow ? 1 : 0].push(g);
       }
     }
-    for (const [key, geos] of buckets) {
+    const group = new THREE.Group();
+    buckets.forEach((geos, shadow) => {
+      if (!geos.length) return;
       const merged = mergeGeometries(geos);
       geos.forEach((g) => g.dispose());
-      const mesh = new THREE.Mesh(merged, this.material);
-      const shadow = key.endsWith(':1');
-      mesh.castShadow = shadow;
+      const mesh = new THREE.Mesh(merged, material);
+      mesh.castShadow = !!shadow;
       mesh.receiveShadow = true;
       merged.computeBoundingSphere();
-      scene.add(mesh);
-    }
+      group.add(mesh);
+    });
     this.items = [];
+    return group;
   }
 }

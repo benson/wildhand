@@ -1,10 +1,12 @@
 // local player: input, third-person camera, movement over the terrain
 import * as THREE from 'three';
-import { createCharacter } from './character.js';
-import { ISLAND_R } from '../world/terrain.js';
+import { createCharacter, createPet } from './character.js';
+import { CONTINENT_R } from '../world/zones.js';
 
 const WALK = 4.4;
 const RUN = 8.2;
+const RIDE = 13;
+const GALLOP = 20;
 const GRAVITY = 24;
 const JUMP = 8.5;
 
@@ -113,11 +115,37 @@ export class Player {
     if (this.holder) this.world.scene.remove(this.holder);
     const { holder, anim } = await createCharacter(model);
     this.holder = holder;
+    this.charRoot = holder.children[0];
+    this.mount = null;
     this.anim = anim;
     this.model = model;
     this.world.scene.add(holder);
     this.pos.y = this.world.terrain.heightAt(this.pos.x, this.pos.z);
     this.holder.position.copy(this.pos);
+  }
+
+  // ride a big elk for long trips across the continent
+  async toggleMount(on = !this.mount) {
+    if (!this.holder) return false;
+    if (!on) {
+      if (this.mount) this.holder.remove(this.mount.root);
+      this.mount = null;
+      this.charRoot.position.y = 0;
+      this.animName = '';
+      this.setAnim('Idle');
+      return false;
+    }
+    if (this.mount || this.mounting) return true;
+    this.mounting = true;
+    const { root, anim } = await createPet('deer', '#b07a4a', 0.12);
+    this.mounting = false;
+    root.scale.setScalar(1.75);
+    this.holder.add(root);
+    this.mount = { root, anim };
+    this.charRoot.position.set(0, 1.5, -0.2);
+    this.animName = '';
+    this.setAnim('Sit_Chair_Idle');
+    return true;
   }
 
   setAnim(name, opts) {
@@ -141,7 +169,7 @@ export class Player {
       if (len > 1) { mx /= len; mz /= len; }
     }
     const mag = Math.hypot(mx, mz);
-    const speed = (ax.run ? RUN : WALK) * Math.min(1, mag);
+    const speed = (this.mount ? (ax.run ? GALLOP : RIDE) : (ax.run ? RUN : WALK)) * Math.min(1, mag);
     this.moving = mag > 0.1;
     if (this.moving) {
       const target = Math.atan2(mx, mz);
@@ -156,7 +184,7 @@ export class Player {
     // keep out of deep water and inside the world
     const nh = terrain.heightAt(next.x, next.z);
     const r = Math.hypot(next.x, next.z);
-    if (nh > -0.9 && r < ISLAND_R * 1.2) { this.pos.x = next.x; this.pos.z = next.z; }
+    if (nh > -0.9 && r < CONTINENT_R * 1.3) { this.pos.x = next.x; this.pos.z = next.z; }
 
     const ground = Math.max(terrain.heightAt(this.pos.x, this.pos.z), -0.6);
     if (this.input.jumpQueued && this.grounded && !this.locked) {
@@ -173,11 +201,15 @@ export class Player {
       this.grounded = true;
     }
 
-    if (!this.locked && this.anim) {
+    if (this.mount) {
+      this.mount.anim.play(this.moving ? (ax.run ? 'run' : 'walk') : 'idle', { speed: this.moving ? (ax.run ? 1.4 : 1.6) : 1 });
+      this.mount.anim.update(dt);
+      if (this.animName !== 'Sit_Chair_Idle' && !this.locked) this.setAnim('Sit_Chair_Idle');
+    } else if (!this.locked && this.anim) {
       const airborne = !this.grounded && this.pos.y > ground + 0.3;
       if (!airborne) {
         if (this.moving) this.setAnim(ax.run ? 'Running_A' : 'Walking_A', { speed: ax.run ? 1.05 : 1.15 });
-        else if (this.animName !== 'Cheer' && this.animName !== 'Interact') this.setAnim('Idle');
+        else if (this.animName !== 'Cheer' && this.animName !== 'Interact' && this.animName !== 'Sit_Floor_Idle') this.setAnim('Idle');
       }
     }
     if (this.holder) {
@@ -197,8 +229,9 @@ export class Player {
       cam.lookAt(this.camTarget);
       return;
     }
-    const { yaw, pitch, dist } = this.input;
-    const look = new THREE.Vector3(this.pos.x, this.pos.y + 1.7, this.pos.z);
+    const { yaw, pitch } = this.input;
+    const dist = this.input.dist + (this.mount ? 3 : 0);
+    const look = new THREE.Vector3(this.pos.x, this.pos.y + (this.mount ? 2.6 : 1.7), this.pos.z);
     const want = new THREE.Vector3(
       look.x + Math.sin(yaw) * Math.cos(pitch) * dist,
       look.y + Math.sin(pitch) * dist,

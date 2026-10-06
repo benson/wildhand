@@ -136,12 +136,38 @@ function buildVariant(kind, seed) {
       const t = i / (tiers - 1);
       leaves.push(clumpGeometry(new THREE.Vector3(0, 1.6 + t * (H - 1.6), 0), 1.9 * (1 - t * 0.7) + 0.35, 46 - i * 5, rng, 0.45));
     }
+  } else if (kind === 'willow') {
+    const H = rand(rng, 3.6, 4.4);
+    const top = new THREE.Vector3(rand(rng, -0.3, 0.3), H, rand(rng, -0.3, 0.3));
+    trunk.push(branch(new THREE.Vector3(0, -0.3, 0), top, 0.4, 0.22));
+    leaves.push(clumpGeometry(top.clone().add(new THREE.Vector3(0, 0.6, 0)), 1.8, 60, rng, 0.7));
+    const k = 6;
+    for (let i = 0; i < k; i++) {
+      const a = (i / k) * Math.PI * 2 + rng() * 0.5;
+      const end = top.clone().add(new THREE.Vector3(Math.cos(a) * 1.9, -0.6 - rng() * 0.6, Math.sin(a) * 1.9));
+      trunk.push(branch(top.clone().add(new THREE.Vector3(0, -0.4, 0)), end.clone().add(new THREE.Vector3(0, 0.8, 0)), 0.14, 0.07));
+      leaves.push(clumpGeometry(end, 1.0, 34, rng, 1.9));
+    }
+  } else if (kind === 'dead') {
+    const H = rand(rng, 3.5, 5);
+    const top = new THREE.Vector3(rand(rng, -0.4, 0.4), H, rand(rng, -0.4, 0.4));
+    trunk.push(branch(new THREE.Vector3(0, -0.3, 0), top, 0.3, 0.1));
+    const k = 4 + Math.floor(rng() * 3);
+    for (let i = 0; i < k; i++) {
+      const a = (i / k) * Math.PI * 2 + rng();
+      const y0 = H * rand(rng, 0.45, 0.9);
+      const from = new THREE.Vector3(top.x * y0 / H, y0, top.z * y0 / H);
+      const end = from.clone().add(new THREE.Vector3(Math.cos(a) * rand(rng, 1, 1.8), rand(rng, 0.5, 1.4), Math.sin(a) * rand(rng, 1, 1.8)));
+      trunk.push(branch(from, end, 0.1, 0.03));
+      const a2 = a + rand(rng, -0.8, 0.8);
+      trunk.push(branch(end, end.clone().add(new THREE.Vector3(Math.cos(a2) * 0.7, 0.6, Math.sin(a2) * 0.7)), 0.04, 0.015));
+    }
   } else if (kind === 'bush') {
     leaves.push(clumpGeometry(new THREE.Vector3(0, 0.55, 0), 0.9, 36, rng, 0.75));
     leaves.push(clumpGeometry(new THREE.Vector3(0.6, 0.4, 0.2), 0.6, 20, rng, 0.75));
   }
   const tg = trunk.length ? toNonIndexedColor(mergeGeometries(trunk), 1) : null;
-  const lg = mergeGeometries(leaves);
+  const lg = leaves.length ? mergeGeometries(leaves) : null;
   return { trunk: tg, leaves: lg };
 }
 
@@ -185,62 +211,77 @@ export class Forest {
     };
     this.trunkMat = new THREE.MeshStandardMaterial({ roughness: 0.95, vertexColors: true });
     this.variants = {};
-    for (const kind of ['oak', 'birch', 'pine', 'bush']) {
+    for (const kind of ['oak', 'birch', 'pine', 'bush', 'willow', 'dead']) {
       this.variants[kind] = [0, 1, 2].map((i) => buildVariant(kind, 1000 + i * 77 + kind.length * 13));
     }
   }
 
-  // placements: [{ kind, x, y, z, s, rot, color: THREE.Color, variant }]
-  // trees are merged per 64m tile: one leaf mesh + one trunk mesh per tile
-  build(placements) {
-    const tiles = new Map();
-    for (const p of placements) {
-      const key = `${Math.floor(p.x / 64)}:${Math.floor(p.z / 64)}`;
-      if (!tiles.has(key)) tiles.set(key, []);
-      tiles.get(key).push(p);
-    }
-    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3();
-    const oak = new THREE.Color('#6e4c34'), birch = new THREE.Color('#e6e0d4');
-    for (const list of tiles.values()) {
-      const leafGeos = [], trunkGeos = [];
-      for (const p of list) {
-        const variant = this.variants[p.kind][p.variant ?? 0];
-        q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), p.rot);
-        sc.setScalar(p.s);
-        m.compose(new THREE.Vector3(p.x, p.y, p.z), q, sc);
+  // one chunk's trees merged into a leaf mesh + a trunk mesh.
+  // list items: [kind, x, y, z, scale, rot, colorHex, variant]
+  buildChunk(list) {
+    const group = new THREE.Group();
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
+    const leafGeos = [], trunkGeos = [];
+    const col = new THREE.Color();
+    for (const [kind, x, y, z, s, rot, hex, v] of list) {
+      const arch = ARCH[kind] || 'oak';
+      const variant = this.variants[arch][v % 3];
+      q.setFromAxisAngle(up, rot);
+      sc.setScalar(s);
+      m.compose(_p.set(x, y - 0.15, z), q, sc);
+      if (variant.leaves) {
         const lg = variant.leaves.clone().applyMatrix4(m);
-        tint(lg, p.color);
-        origin(lg, p);
+        tint(lg, col.set(hex));
+        if (kind === 'snowpine') snowcap(lg);
+        origin(lg, x, y, z);
         leafGeos.push(lg);
-        if (variant.trunk) {
-          const tg = variant.trunk.clone().applyMatrix4(m);
-          tint(tg, p.kind === 'birch' ? birch : oak);
-          origin(tg, p);
-          trunkGeos.push(tg);
-        }
       }
+      if (variant.trunk) {
+        const tg = variant.trunk.clone().applyMatrix4(m);
+        tint(tg, TRUNK[kind] || TRUNK.oak);
+        origin(tg, x, y, z);
+        trunkGeos.push(tg);
+      }
+    }
+    if (leafGeos.length) {
       const leaves = new THREE.Mesh(mergeGeometries(leafGeos), this.leafMat);
       leaves.castShadow = leaves.receiveShadow = true;
-      this.group.add(leaves);
-      if (trunkGeos.length) {
-        const trunk = new THREE.Mesh(mergeGeometries(trunkGeos), this.trunkMat);
-        trunk.castShadow = trunk.receiveShadow = true;
-        this.group.add(trunk);
-      }
-      leafGeos.concat(trunkGeos).forEach((g) => g.dispose());
+      group.add(leaves);
     }
-    return this.group;
+    if (trunkGeos.length) {
+      const trunk = new THREE.Mesh(mergeGeometries(trunkGeos), this.trunkMat);
+      trunk.castShadow = trunk.receiveShadow = true;
+      group.add(trunk);
+    }
+    leafGeos.concat(trunkGeos).forEach((g) => g.dispose());
+    return group;
   }
+
   update(t) { this.uniforms.uTime.value = t; }
 }
 
+function snowcap(g) {
+  const c = g.attributes.color, n = g.attributes.normal;
+  for (let i = 0; i < c.count; i++) {
+    const t = Math.min(1, Math.max(0, (n.getY(i) - 0.15) / 0.5));
+    const w = 0.92;
+    c.setXYZ(i, c.getX(i) + (w - c.getX(i)) * t, c.getY(i) + (w - c.getY(i)) * t, c.getZ(i) + (0.96 - c.getZ(i)) * t);
+  }
+}
 function tint(g, color) {
   const c = g.attributes.color;
   for (let i = 0; i < c.count; i++) c.setXYZ(i, c.getX(i) * color.r, c.getY(i) * color.g, c.getZ(i) * color.b);
 }
-function origin(g, p) {
+function origin(g, x, y, z) {
   const n = g.attributes.position.count;
   const a = new Float32Array(n * 3);
-  for (let i = 0; i < n; i++) { a[i * 3] = p.x; a[i * 3 + 1] = p.y; a[i * 3 + 2] = p.z; }
+  for (let i = 0; i < n; i++) { a[i * 3] = x; a[i * 3 + 1] = y; a[i * 3 + 2] = z; }
   g.setAttribute('aOrigin', new THREE.BufferAttribute(a, 3));
 }
+const _p = new THREE.Vector3();
+const ARCH = { oak: 'oak', blossom: 'oak', autumn: 'oak', birch: 'birch', goldbirch: 'birch', pine: 'pine', snowpine: 'pine', bush: 'bush', willow: 'willow', dead: 'dead', charred: 'dead' };
+const TRUNK = {
+  oak: new THREE.Color('#6e4c34'), birch: new THREE.Color('#e6e0d4'), goldbirch: new THREE.Color('#e6e0d4'),
+  dead: new THREE.Color('#7a6a5a'), charred: new THREE.Color('#2a2224'), willow: new THREE.Color('#5a4a34'),
+  pine: new THREE.Color('#5a3e2c'), snowpine: new THREE.Color('#5a3e2c'),
+};

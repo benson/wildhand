@@ -2,7 +2,9 @@
 import * as THREE from 'three';
 import { createRenderer, createComposer, pickQuality } from './render.js';
 import { World } from './world/world.js';
-import { TOWN_R, SIZE, RES, ISLAND_R } from './world/terrain.js';
+import { ZONES, ZONE_BY_ID, CONTINENT_R } from './world/zones.js';
+import { roadSegments, height as genHeight } from './world/gen.js';
+import { ensureProgress, grantXp, xpFor, xpToNext, MAX_LEVEL } from './cards/progress.js';
 import { Player, Input } from './entities/player.js';
 import { Creatures, enemyStats } from './entities/creatures.js';
 import { Remotes } from './entities/remote.js';
@@ -12,7 +14,7 @@ import { loadProfile, saveProfile } from './cards/profile.js';
 import { BattleUI, floatText, banner } from './ui/battleui.js';
 import { setPortraits } from './ui/cardview.js';
 import { renderPortraits } from './ui/portraits.js';
-import { titleScreen, loadingScreen, rewardScreen, shopScreen, deckScreen, confirmScreen, modal } from './ui/menus.js';
+import { titleScreen, loadingScreen, rewardScreen, shopScreen, deckScreen, confirmScreen, modal, worldMapScreen } from './ui/menus.js';
 import { Net } from './net.js';
 import { sfx, toggleMute, isMuted } from './sfx.js';
 
@@ -39,7 +41,7 @@ function getGlowTex() {
 export class Game {
   constructor() {
     this.quality = pickQuality();
-    this.profile = loadProfile();
+    this.profile = ensureProgress(loadProfile());
     this.ui = document.getElementById('ui');
     this.state = 'loading'; // loading | title | explore | battle | duel | menu
     this.fx = [];
@@ -62,9 +64,13 @@ export class Game {
     this.camera.fov = this.camera.aspect < 1 ? 70 : 55;
     this.camera.updateProjectionMatrix();
     this.world = new World(this.scene, this.quality);
-    await this.world.build((p, msg) => load.set(p * 0.8, msg));
+    await this.world.build((p, msg) => load.set(p * 0.6, msg));
     this.creatures = new Creatures(this.world);
-    this.creatures.generate();
+    this.world.onSpawns = (k, list) => this.creatures.addSpawns(k, list);
+    this.world.onUnloadSpawns = (k) => this.creatures.removeSpawns(k);
+    this.titleCenter = ZONE_BY_ID.hearthvale.hub;
+    const hp = this.world.hubs[0].pos;
+    await this.world.settle(hp, (left) => load.set(0.6 + 0.2 * (1 - Math.min(1, left / 12)), 'growing the meadow'));
     load.set(0.85, 'painting portraits');
     try { setPortraits(await renderPortraits()); } catch (e) { console.warn('portraits failed', e); }
     this.input = new Input(canvas);
@@ -72,8 +78,8 @@ export class Game {
     this.remotes = new Remotes(this.scene);
     this.composer = createComposer(this.renderer, this.scene, this.camera, this.quality);
     this.battleUI = new BattleUI(this.ui, this.battleHooks());
-    load.set(0.95, 'calling the merchant');
-    await this.spawnMerchant();
+    load.set(0.95, 'calling the merchants');
+    await this.spawnMerchants();
     addEventListener('resize', () => this.resize());
     this.clock = new THREE.Clock();
     load.done();
@@ -92,16 +98,46 @@ export class Game {
     this.composer.setSize(innerWidth, innerHeight);
   }
 
-  async spawnMerchant() {
+  async spawnMerchants() {
     const { createCharacter } = await import('./entities/character.js');
-    const { holder, anim } = await createCharacter('rogue_hooded');
-    const st = this.world.stall;
-    holder.position.copy(st.merchantPos);
-    holder.position.y = this.world.terrain.heightAt(st.merchantPos.x, st.merchantPos.z);
-    holder.rotation.y = st.rot;
-    anim.play('Idle');
-    this.scene.add(holder);
-    this.merchant = { holder, anim };
+    this.merchants = [];
+    for (const hub of this.world.hubs) {
+      const { holder, anim } = await createCharacter(hub.index % 2 ? 'mage' : 'rogue_hooded');
+      holder.position.copy(hub.merchantPos);
+      holder.position.y = hub.pos.y;
+      holder.rotation.y = hub.merchantRot;
+      anim.play('Idle');
+      this.scene.add(holder);
+      this.merchants.push({ holder, anim, hub });
+    }
+  }
+
+  // nearest outpost to a point
+  nearestHub(p, onlyDiscovered = false) {
+    let best = null, bd = Infinity;
+    for (const h of this.world.hubs) {
+      if (onlyDiscovered && !this.profile.discovered.includes(h.zone.id)) continue;
+      const d = Math.hypot(h.pos.x - p.x, h.pos.z - p.z);
+      if (d < bd) { bd = d; best = h; }
+    }
+    return { hub: best, dist: bd };
+  }
+
+  // move the player somewhere far away, waiting for the ground to stream in
+  async teleport(x, z, label = 'travelling') {
+    const veil = document.createElement('div');
+    veil.className = 'title loading';
+    veil.innerHTML = `<div class="logo" style="font-size:64px">${label}…</div><div class="progress"><div></div></div>`;
+    this.ui.appendChild(veil);
+    const prev = this.state;
+    this.state = 'menu';
+    this.player.pos.set(x, genHeight(x, z), z);
+    await this.world.settle(this.player.pos, (left) => { veil.querySelector('.progress > div').style.width = `${Math.round((1 - Math.min(1, left / 12)) * 100)}%`; });
+    this.player.pos.y = this.world.terrain.heightAt(x, z);
+    this.world.snapAtmosphere = true;
+    this.lastZone = null;
+    veil.remove();
+    this.state = prev === 'menu' ? 'explore' : prev;
   }
 
   async start({ name, model, color }) {
@@ -110,18 +146,17 @@ export class Game {
     p.model = model;
     p.color = color;
     saveProfile(p);
-    if (p.pos && Math.hypot(p.pos.x, p.pos.z) < ISLAND_R && this.world.terrain.heightAt(p.pos.x, p.pos.z) > 0.5) {
-      this.player.pos.set(p.pos.x, 0, p.pos.z);
-    } else {
-      this.player.pos.set(3, 0, 7);
-    }
+    const home = this.world.hubs[0].pos;
+    let sx = home.x + 3, sz = home.z + 7;
+    if (p.pos && Math.hypot(p.pos.x, p.pos.z) < CONTINENT_R * 1.2 && genHeight(p.pos.x, p.pos.z) > 0.5) { sx = p.pos.x; sz = p.pos.z; }
     await this.player.load(model);
     this.buildHUD();
+    await this.teleport(sx, sz, 'arriving');
     this.state = 'explore';
     this.net = new Net();
     this.setupNet();
     this.net.connect();
-    this.toast(`welcome to the isle, ${name}`);
+    this.toast(`welcome to the continent, ${name}`);
     if (!p.wins) setTimeout(() => this.toast('tip: walk into a wild creature to battle it'), 2500);
     setInterval(() => this.save(), 5000);
   }
@@ -138,12 +173,15 @@ export class Game {
       <div class="labels"></div>
       <div class="hud-tl">
         <div class="chip"><span class="hud-name"></span><div class="hpbar"><div></div></div><span class="hud-hp"></span></div>
-        <div class="row"><div class="chip gold hud-gold"></div><div class="chip hud-zone"></div></div>
+        <div class="row"><div class="chip hud-lv"><span class="lvn"></span><div class="xpbar"><div></div></div></div><div class="chip gold hud-gold"></div></div>
+        <div class="row"><div class="chip hud-zone"></div></div>
       </div>
       <div class="hud-tr"><canvas class="minimap" width="170" height="170"></canvas><div class="chip hud-online"></div></div>
       <div class="hud-br">
+        <button class="iconbtn" data-b="map">map <kbd>m</kbd></button>
+        <button class="iconbtn" data-b="mount">ride <kbd>r</kbd></button>
         <button class="iconbtn" data-b="deck">deck <kbd>tab</kbd></button>
-        <button class="iconbtn" data-b="mute">${isMuted() ? 'sound off' : 'sound on'} <kbd>m</kbd></button>
+        <button class="iconbtn" data-b="mute">${isMuted() ? 'sound off' : 'sound on'} <kbd>n</kbd></button>
         <button class="iconbtn" data-b="help">help <kbd>h</kbd></button>
       </div>
       <div class="prompt hidden"></div>
@@ -156,6 +194,8 @@ export class Game {
       hpn: ui.querySelector('.hud-hp'),
       gold: ui.querySelector('.hud-gold'),
       zone: ui.querySelector('.hud-zone'),
+      lvn: ui.querySelector('.hud-lv .lvn'),
+      xp: ui.querySelector('.hud-lv .xpbar > div'),
       online: ui.querySelector('.hud-online'),
       prompt: ui.querySelector('.prompt'),
       labels: ui.querySelector('.labels'),
@@ -167,7 +207,9 @@ export class Game {
       br: ui.querySelector('.hud-br'),
     };
     ui.querySelector('[data-b=deck]').onclick = () => this.openDeck();
-    ui.querySelector('[data-b=mute]').onclick = (e) => { e.currentTarget.innerHTML = `${toggleMute() ? 'sound off' : 'sound on'} <kbd>m</kbd>`; };
+    ui.querySelector('[data-b=mute]').onclick = (e) => { e.currentTarget.innerHTML = `${toggleMute() ? 'sound off' : 'sound on'} <kbd>n</kbd>`; };
+    ui.querySelector('[data-b=map]').onclick = () => this.openMap();
+    ui.querySelector('[data-b=mount]').onclick = () => this.toggleMount();
     ui.querySelector('[data-b=help]').onclick = () => this.openHelp();
     this.buildMinimap();
     this.labelEls = new Map();
@@ -187,12 +229,15 @@ export class Game {
       if (e.code === 'KeyE') this.interact();
       if (e.code === 'KeyF') this.challenge();
       if (e.code === 'Tab') { e.preventDefault(); this.openDeck(); }
-      if (e.code === 'KeyM') ui.querySelector('[data-b=mute]').click();
+      if (e.code === 'KeyN') ui.querySelector('[data-b=mute]').click();
+      if (e.code === 'KeyM') this.openMap();
+      if (e.code === 'KeyR') this.toggleMount();
       if (e.code === 'KeyH') this.openHelp();
     });
 
     if (matchMedia('(pointer: coarse)').matches) {
-      ui.insertAdjacentHTML('beforeend', '<div class="joystick hidden"><div></div></div><div class="mobile-btns"><button data-m="e">act</button><button data-m="jump">jump</button></div>');
+      ui.insertAdjacentHTML('beforeend', '<div class="joystick hidden"><div></div></div><div class="mobile-btns"><button data-m="ride">ride</button><button data-m="e">act</button><button data-m="jump">jump</button></div>');
+      ui.querySelector('[data-m=ride]').onclick = () => this.toggleMount();
       const joy = ui.querySelector('.joystick');
       this.input.onJoy = (j) => {
         joy.classList.toggle('hidden', !j.active);
@@ -220,52 +265,62 @@ export class Game {
   }
 
   buildMinimap() {
-    const S = 170;
+    const m = this.world.terrain.map;
     const base = document.createElement('canvas');
-    base.width = base.height = S;
+    base.width = base.height = m.res;
     const g = base.getContext('2d');
-    const img = g.createImageData(S, S);
-    const { terrain } = this.world;
-    const n = RES + 1;
-    const span = ISLAND_R * 2.3;
-    for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) {
-      const x = (i / S - 0.5) * span, z = (j / S - 0.5) * span;
-      const gi = Math.round((x + SIZE / 2) / (SIZE / RES)), gj = Math.round((z + SIZE / 2) / (SIZE / RES));
-      const k = (j * S + i) * 4;
-      const idx = gj * n + gi;
-      const h = terrain.h[idx] ?? -9;
+    const img = g.createImageData(m.res, m.res);
+    for (let k = 0; k < m.res * m.res; k++) {
+      const h = m.h[k];
       if (h < 0) {
-        const d = Math.min(1, -h / 8);
-        img.data[k] = 70 - d * 40; img.data[k + 1] = 180 - d * 90; img.data[k + 2] = 200 - d * 60;
+        const d = Math.min(1, -h / 12);
+        const lava = m.water[k] > 0.75, swamp = m.water[k] > 0.25 && !lava;
+        img.data[k * 4] = lava ? 230 : swamp ? 90 : 70 - d * 40;
+        img.data[k * 4 + 1] = lava ? 90 : swamp ? 100 : 180 - d * 90;
+        img.data[k * 4 + 2] = lava ? 30 : swamp ? 50 : 200 - d * 60;
       } else {
-        const col = terrain.colors;
-        img.data[k] = Math.pow(col[idx * 3], 1 / 2.2) * 255;
-        img.data[k + 1] = Math.pow(col[idx * 3 + 1], 1 / 2.2) * 255;
-        img.data[k + 2] = Math.pow(col[idx * 3 + 2], 1 / 2.2) * 255;
+        const shade = 0.85 + Math.min(0.3, h / 300);
+        img.data[k * 4] = Math.min(255, m.col[k * 4] * shade);
+        img.data[k * 4 + 1] = Math.min(255, m.col[k * 4 + 1] * shade);
+        img.data[k * 4 + 2] = Math.min(255, m.col[k * 4 + 2] * shade);
       }
-      img.data[k + 3] = 255;
+      img.data[k * 4 + 3] = 255;
     }
     g.putImageData(img, 0, 0);
+    // roads
+    g.strokeStyle = 'rgba(120, 84, 50, 0.9)';
+    g.lineWidth = 1.2;
+    const sc = m.res / 8192;
+    for (const r of roadSegments()) {
+      g.beginPath(); g.moveTo((r.x0 + 4096) * sc, (r.z0 + 4096) * sc); g.lineTo((r.x1 + 4096) * sc, (r.z1 + 4096) * sc); g.stroke();
+    }
     this.mapBase = base;
-    this.mapSpan = span;
   }
 
   drawMinimap() {
     const cv = this.hud.map;
     const g = cv.getContext('2d');
     const S = cv.width;
-    g.drawImage(this.mapBase, 0, 0);
-    const toMap = (x, z) => [(x / this.mapSpan + 0.5) * S, (z / this.mapSpan + 0.5) * S];
-    const st = sharedTime();
+    const span = 900; // meters across the minimap
+    const m = this.world.terrain.map;
+    const sc = m.res / 8192;
+    const p = this.player.pos;
     g.save();
-    // town + ruins markers
-    let [tx, tz] = toMap(0, 0);
-    g.fillStyle = '#ffcf5a'; g.beginPath(); g.arc(tx, tz, 4, 0, 7); g.fill();
+    g.imageSmoothingEnabled = true;
+    g.drawImage(this.mapBase, (p.x - span / 2 + 4096) * sc, (p.z - span / 2 + 4096) * sc, span * sc, span * sc, 0, 0, S, S);
+    const toMap = (x, z) => [((x - p.x) / span + 0.5) * S, ((z - p.z) / span + 0.5) * S];
+    for (const h of this.world.hubs) {
+      const [x, z] = toMap(h.pos.x, h.pos.z);
+      if (x < -10 || z < -10 || x > S + 10 || z > S + 10) continue;
+      g.fillStyle = this.profile.discovered.includes(h.zone.id) ? '#8fd8ff' : '#ffcf5a';
+      g.strokeStyle = '#1b1430'; g.lineWidth = 1.5;
+      g.beginPath(); g.arc(x, z, 4.5, 0, 7); g.fill(); g.stroke();
+    }
     for (const c of this.creatures.list) {
       if (!c.obj?.holder.visible) continue;
       const [x, z] = toMap(c.pos.x, c.pos.z);
-      g.fillStyle = EL[CREATURES[c.species].el].color;
-      g.beginPath(); g.arc(x, z, CREATURES[c.species].tier >= 3 ? 3 : 2, 0, 7); g.fill();
+      g.fillStyle = c.boss ? '#ff4d5e' : EL[CREATURES[c.species].el].color;
+      g.beginPath(); g.arc(x, z, c.boss ? 4 : 2.2, 0, 7); g.fill();
     }
     for (const r of this.remotes.map.values()) {
       const [x, z] = toMap(r.pos.x, r.pos.z);
@@ -273,13 +328,39 @@ export class Game {
       g.strokeStyle = '#fff'; g.lineWidth = 1.5;
       g.beginPath(); g.arc(x, z, 3.5, 0, 7); g.fill(); g.stroke();
     }
-    const [px, pz] = toMap(this.player.pos.x, this.player.pos.z);
-    g.translate(px, pz);
+    g.translate(S / 2, S / 2);
     g.rotate(-this.player.facing + Math.PI);
     g.fillStyle = '#fff'; g.strokeStyle = '#1b1430'; g.lineWidth = 2;
     g.beginPath(); g.moveTo(0, -7); g.lineTo(5, 5); g.lineTo(0, 2); g.lineTo(-5, 5); g.closePath(); g.stroke(); g.fill();
     g.restore();
-    void st;
+  }
+
+  openMap(travelFrom = null) {
+    if (this.state !== 'explore') return;
+    this.state = 'menu';
+    worldMapScreen({
+      base: this.mapBase,
+      hubs: this.world.hubs,
+      zones: ZONES,
+      discovered: this.profile.discovered,
+      player: this.player.pos,
+      facing: this.player.facing,
+      others: [...this.remotes.map.values()].map((r) => ({ x: r.pos.x, z: r.pos.z, c: r.state.c, n: r.state.n })),
+      level: this.profile.level,
+      travelFrom,
+      onTravel: async (hub) => {
+        sfx('heal');
+        await this.teleport(hub.waystone.x + 2.5, hub.waystone.z + 3, `to ${hub.zone.hubName}`);
+        this.toast(`you arrive at ${hub.zone.hubName}`);
+      },
+      onClose: () => { if (this.state === 'menu') this.state = 'explore'; },
+    });
+  }
+
+  async toggleMount() {
+    if (this.state !== 'explore') return;
+    const on = await this.player.toggleMount();
+    sfx(on ? 'encounter' : 'tick');
   }
 
   updateHUD() {
@@ -289,11 +370,16 @@ export class Game {
     this.hud.hp.style.width = `${(p.hp / p.maxHp) * 100}%`;
     this.hud.hpn.textContent = `${p.hp}/${p.maxHp}`;
     this.hud.gold.textContent = `${p.gold} gold`;
-    const { terrain } = this.world;
     const pos = this.player.pos;
-    const inTown = Math.hypot(pos.x, pos.z) < TOWN_R;
-    const zone = inTown ? 'hearthtown' : terrain.biomeAt(pos.x, pos.z);
-    this.hud.zone.textContent = inTown ? 'hearthtown · safe' : `${zone} · lv ${terrain.levelAt(pos.x, pos.z)}+`;
+    const { hub, dist } = this.nearestHub(pos);
+    const zone = ZONES[this.world.zoneIdx];
+    this.hud.zone.textContent = dist < 40 ? `${hub.zone.hubName} · safe` : `${zone.name} · lv ${zone.levels[0]}–${zone.levels[1]}`;
+    this.hud.lvn.textContent = `lv ${p.level}`;
+    this.hud.xp.style.width = p.level >= MAX_LEVEL ? '100%' : `${(p.xp / xpToNext(p.level)) * 100}%`;
+    if (this.lastZone !== zone.id) {
+      if (this.lastZone) this.zoneBanner(zone);
+      this.lastZone = zone.id;
+    }
     const n = this.net?.count || 0;
     this.hud.online.textContent = `${n + 1} on the isle`;
   }
@@ -319,6 +405,18 @@ export class Game {
   interact() {
     const it = this.nearInteractable();
     if (!it) return false;
+    if (it.id === 'waystone') {
+      const id = it.hub.zone.id;
+      if (!this.profile.discovered.includes(id)) {
+        this.profile.discovered.push(id);
+        sfx('win');
+        banner(`${it.hub.zone.hubName} waystone attuned`, '#8fd8ff');
+        this.save();
+      }
+      this.player.setAnim('Interact', { once: true, then: () => this.player.setAnim('Idle') });
+      setTimeout(() => this.openMap(it.hub), 350);
+      return true;
+    }
     if (it.id === 'hearth') {
       const p = this.profile;
       if (p.hp < p.maxHp) { p.hp = p.maxHp; sfx('heal'); this.toast('the hearth restores you to full hp'); }
@@ -326,22 +424,35 @@ export class Game {
       this.player.setAnim('Interact', { once: true, then: () => this.player.setAnim('Idle') });
       this.save();
     } else if (it.id === 'shop') {
-      this.openShop();
+      this.openShop(it.hub);
     } else if (it.id === 'duel') {
       this.toast(this.remotes.map.size ? 'walk up to another player and press f to duel' : 'no one else is here yet — share the link with a friend!');
     }
     return true;
   }
 
-  openShop() {
+  openShop(hub) {
     this.state = 'menu';
-    this.merchant?.anim.play('Interact', { once: true, then: () => this.merchant.anim.play('Idle') });
-    this.shopState.stock = this.shopState.stockVersion === this.profile.wins ? this.shopState.stock : null;
-    this.shopState.stockVersion = this.profile.wins;
-    shopScreen(this.profile, this.shopState, {
+    const mer = this.merchants.find((m) => m.hub === hub);
+    mer?.anim.play('Interact', { once: true, then: () => mer.anim.play('Idle') });
+    const st = (this.shopStates ||= {});
+    const key = hub.zone.id;
+    const state = (st[key] ||= {});
+    if (state.stockVersion !== this.profile.wins) { state.stock = null; state.stockVersion = this.profile.wins; }
+    shopScreen(this.profile, state, {
       sfx,
+      title: `${hub.zone.hubName} merchant`,
+      maxRarity: hub.zone.levels[0] >= 9 ? 3 : 2,
       onChange: () => { this.save(); if (!document.querySelector('.modal-bg')) this.state = 'explore'; },
     });
+  }
+
+  zoneBanner(zone) {
+    const d = document.createElement('div');
+    d.className = 'zonebanner';
+    d.innerHTML = `<div class="zn">${zone.name}</div><div class="zl">lv ${zone.levels[0]}–${zone.levels[1]} · ${zone.blurb}</div>`;
+    this.ui.appendChild(d);
+    setTimeout(() => d.remove(), 4200);
   }
 
   openDeck() {
@@ -392,9 +503,11 @@ export class Game {
       for (const c of this.creatures.list) {
         if (!c.obj?.holder.visible) continue;
         const d = c.pos.distanceTo(this.player.pos);
-        if (d > 22) continue;
+        if (d > (c.boss ? 60 : 22)) continue;
         const spec = CREATURES[c.species];
-        place(`c:${c.id}`, _v.copy(c.pos).setY(c.pos.y + 1.5 * spec.scale + 0.4), `${c.chase ? '<span class="bang">!</span>' : ''}<span style="color:${EL[spec.el].color}">${spec.name}</span> <span class="lv">lv ${c.level}</span>`, 'creature');
+        const lvCls = c.level >= this.profile.level + 5 ? ' style="color:#ff6a78"' : '';
+        const nm = c.boss ? `<span style="color:#ffcf5a">☠ ${esc(c.boss)}</span>` : `<span style="color:${EL[spec.el].color}">${spec.name}</span>`;
+        place(`c:${c.id}`, _v.copy(c.pos).setY(c.pos.y + 1.5 * spec.scale * (c.boss ? 2.1 : 1) + 0.4), `${c.chase ? '<span class="bang">!</span>' : ''}${nm} <span class="lv"${lvCls}>lv ${c.level}</span>`, 'creature');
       }
     }
     for (const [k, el] of this.labelEls) if (!seen.has(k)) { el.remove(); this.labelEls.delete(k); }
@@ -468,7 +581,7 @@ export class Game {
     const p = this.player;
     this.net.send('st', {
       x: +p.pos.x.toFixed(2), y: +p.pos.y.toFixed(2), z: +p.pos.z.toFixed(2), f: +p.facing.toFixed(2),
-      a: p.animName, m: p.model, n: this.profile.name, c: this.profile.color,
+      a: p.animName, m: p.model, n: this.profile.name, c: this.profile.color, r: p.mount ? 1 : 0, l: this.profile.level,
       b: this.state === 'battle' || this.state === 'duel' ? 1 : 0,
     });
   }
@@ -632,6 +745,7 @@ export class Game {
   startBattle(c) {
     if (this.state !== 'explore') return;
     this.state = 'battle';
+    if (this.player.mount) this.player.toggleMount(false);
     this.engaged = c;
     this.creatures.engagedId = c.id;
     c.chase = null;
@@ -645,7 +759,7 @@ export class Game {
     const spec = CREATURES[c.species];
     // prefer a flat, open spot for the creature so the fight reads well on camera
     const T = this.world.terrain;
-    const D = 4.2 + spec.scale;
+    const D = 4.2 + spec.scale * (c.boss ? 2.4 : 1);
     for (const off of [0, 0.4, -0.4, 0.8, -0.8, 1.2, -1.2, 1.7, -1.7, 2.3, -2.3, Math.PI]) {
       const d2 = dir.clone().applyAxisAngle(_up, off);
       const q = p.pos.clone().addScaledVector(d2, D);
@@ -662,12 +776,12 @@ export class Game {
     p.facing = Math.atan2(dir.x, dir.z);
     p.setAnim('Idle');
     c.obj.anim.play('idle');
-    this.frameBattle(p.pos, c.pos, dir, spec.scale);
+    this.frameBattle(p.pos, c.pos, dir, spec.scale * (c.boss ? 2.1 : 1));
     this.setHudVisible(false);
     sfx('encounter');
-    banner(`wild ${spec.name}!`, EL[spec.el].color);
-    const stats = enemyStats(c.species, c.level);
-    this.battle = new Battle({ profile: this.profile, enemy: { id: c.id, species: c.species, level: c.level, hp: stats.hp, atk: stats.atk } });
+    banner(c.boss ? c.boss : `wild ${spec.name}!`, c.boss ? '#ffcf5a' : EL[spec.el].color);
+    const stats = enemyStats(c.species, c.level, !!c.boss);
+    this.battle = new Battle({ profile: this.profile, enemy: { id: c.id, species: c.species, level: c.level, hp: stats.hp, atk: stats.atk, boss: c.boss || null } });
     setTimeout(() => {
       if (this.state !== 'battle') return;
       this.battleUI.open(this.battle, {
@@ -744,16 +858,19 @@ export class Game {
     this.profile.gold += gold;
     this.profile.wins++;
     this.profile.bestiary[c.species] = (this.profile.bestiary[c.species] || 0) + 1;
-    const until = sharedTime() + 75;
+    const until = sharedTime() + (c.boss ? 300 : 75);
     this.creatures.markDefeated(c.id, until);
     this.net?.send('kill', { id: c.id, until });
     const enemy = { ...b.enemy };
+    const xp = xpFor(c.level, CREATURES[c.species].tier, !!c.boss);
+    const gained = grantXp(this.profile, xp);
     this.endBattleCommon();
     this.state = 'menu';
     this.player.setAnim('Cheer', { once: true, then: () => this.player.setAnim('Idle') });
-    banner('victory!', '#ffcf5a');
+    banner(c.boss ? `${c.boss} falls!` : 'victory!', '#ffcf5a');
+    if (gained) setTimeout(() => { sfx('win'); banner(`level ${this.profile.level}!`, '#8fd8ff'); this.toast(`max hp ${this.profile.maxHp} · charm slots ${this.profile.maxCharms}`); }, 1200);
     setTimeout(() => {
-      rewardScreen(this.profile, enemy, gold, (o) => {
+      rewardScreen(this.profile, enemy, gold, xp, (o) => {
         if (o?.kind === 'card' && o.card.creature) this.toast(`${CREATURES[o.card.creature].name} joins your deck`);
         else if (o?.kind === 'charm') this.toast('charm equipped');
         this.state = 'explore';
@@ -775,11 +892,12 @@ export class Game {
     const lost = Math.floor(this.profile.gold / 2);
     this.profile.gold -= lost;
     this.profile.hp = this.profile.maxHp;
-    this.player.pos.set(3, this.world.terrain.heightAt(3, 7), 7);
+    const { hub } = this.nearestHub(this.player.pos, true);
     this.player.locked = false;
     this.player.setAnim('Idle');
+    await this.teleport(hub.pos.x + 3, hub.pos.z + 6, 'waking up');
     this.state = 'explore';
-    this.toast(`you wake by the hearth${lost ? ` · lost ${lost} gold` : ''}`);
+    this.toast(`you wake by the ${hub.zone.hubName} hearth${lost ? ` · lost ${lost} gold` : ''}`);
     this.save();
   }
 
@@ -916,14 +1034,15 @@ export class Game {
     if (this.state === 'title') {
       // slow orbit over the town behind the title screen
       const a = t * 0.05;
-      this.camera.position.set(Math.sin(a) * 34, 15, Math.cos(a) * 34);
-      this.camera.lookAt(0, 5, 0);
-      this.world.update(t, dt, new THREE.Vector3(Math.sin(a) * 20, 5, Math.cos(a) * 20), this.camera);
+      const c = this.world.hubs[0].pos;
+      this.camera.position.set(c.x + Math.sin(a) * 34, c.y + 10, c.z + Math.cos(a) * 34);
+      this.camera.lookAt(c.x, c.y, c.z);
+      this.world.update(t, dt, _v.set(c.x + Math.sin(a) * 20, c.y, c.z + Math.cos(a) * 20), this.camera);
       this.creatures.peaceful = true;
       this.creatures.update(st, dt, this.camera.position, null);
     } else {
       this.player.update(dt);
-      const inTown = Math.hypot(this.player.pos.x, this.player.pos.z) < TOWN_R + 6;
+      const inTown = this.nearestHub(this.player.pos).dist < 50;
       this.creatures.peaceful = inTown || this.state !== 'explore';
       this.creatures.update(st, dt, this.player.pos, this.creatures.engagedId);
       this.remotes.update(dt);
@@ -938,12 +1057,17 @@ export class Game {
         if (this.frame % 6 === 0) { this.updateHUD(); this.updatePrompt(); this.drawMinimap(); }
       }
     }
-    this.merchant?.anim.update(dt);
-    // look at the player when they're close
-    if (this.merchant && this.state !== 'title') {
-      const m = this.merchant.holder;
-      const d = m.position.distanceTo(this.player.pos);
-      if (d < 8) m.rotation.y += (Math.atan2(this.player.pos.x - m.position.x, this.player.pos.z - m.position.z) - m.rotation.y) * Math.min(1, dt * 4);
+    // merchants idle nearby and turn to face the player
+    for (const mer of this.merchants || []) {
+      const m = mer.holder;
+      const d = m.position.distanceTo(this.state === 'title' ? this.camera.position : this.player.pos);
+      m.visible = d < 200;
+      if (d < 90) mer.anim.update(dt);
+      if (d < 8 && this.state !== 'title') {
+        let da = Math.atan2(this.player.pos.x - m.position.x, this.player.pos.z - m.position.z) - m.rotation.y;
+        da = Math.atan2(Math.sin(da), Math.cos(da));
+        m.rotation.y += da * Math.min(1, dt * 4);
+      }
     }
 
     this.fx = this.fx.filter((f) => f(dt) !== false);

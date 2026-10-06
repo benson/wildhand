@@ -318,3 +318,13 @@ button { font-family: inherit; text-transform: lowercase; cursor: pointer; }
 }
 
 body.in-battle .mobile-btns, body.in-battle .joystick { display: none; }
+
+.xpbar { width: 70px; height: 7px; border-radius: 4px; background: rgba(0,0,0,.35); overflow: hidden; }
+.xpbar > div { height: 100%; background: linear-gradient(90deg, #5fb8ff, #8fd8ff); transition: width .4s; }
+.hud-tl .row { gap: 8px; }
+.zonebanner { position: fixed; top: 18%; left: 50%; transform: translateX(-50%); text-align: center; pointer-events: none; z-index: 6; animation: zoneb 4.2s forwards; }
+.zonebanner .zn { font-size: clamp(34px, 6vw, 64px); font-weight: 700; color: var(--paper); text-shadow: 0 4px 0 rgba(27,20,48,.6), 0 10px 30px rgba(0,0,0,.5); }
+.zonebanner .zl { font-size: clamp(14px, 1.8vw, 18px); opacity: .9; text-shadow: 0 2px 6px rgba(0,0,0,.6); }
+@keyframes zoneb { 0% { opacity: 0; transform: translate(-50%, 10px); } 12% { opacity: 1; transform: translate(-50%, 0); } 80% { opacity: 1; } 100% { opacity: 0; } }
+.worldmap { display: flex; justify-content: center; }
+.worldmap canvas { width: min(78vh, 100%); height: auto; aspect-ratio: 1; border-radius: 14px; border: 2px solid rgba(255,255,255,.15); background: #14507f; }
