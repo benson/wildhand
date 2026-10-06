@@ -153,6 +153,18 @@ button[data-tip] { cursor: pointer; }
 .modal-bg { position: fixed; inset: 0; background: rgba(15, 10, 30, 0.55); display: flex; align-items: center; justify-content: center; z-index: 12; padding: 16px; animation: fade .2s; }
 @keyframes fade { from { opacity: 0; } }
 .modal { width: min(880px, 100%); max-height: calc(100vh - 32px); overflow: auto; }
+.modal.wide { width: min(1040px, 100%); }
+/* never show native scrollbars; anything that must scroll still scrolls by wheel or touch */
+* { scrollbar-width: none; }
+*::-webkit-scrollbar { display: none; }
+.deckcols { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 26px; }
+.deckcols h3:first-child { margin-top: 0; }
+.stacks { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.stack { display: flex; min-width: 0; }
+.stack .card { --card-w: 72px; flex: none; position: relative; }
+.stack .card + .card { margin-left: calc(var(--step, 44px) - var(--card-w)); }
+.stack .card:hover { z-index: 3; }
+.deckside .levels { font-size: 13px; }
 .modal h2 { margin: 0 0 4px; font-size: 30px; }
 .modal h3 { margin: 18px 0 8px; font-size: 17px; opacity: .8; font-weight: 600; }
 .modal .sub { opacity: .75; margin-bottom: 14px; }
@@ -285,6 +297,7 @@ button[data-tip] { cursor: pointer; }
 .duelbar .sc { font-family: 'JetBrains Mono', monospace; font-weight: 700; color: var(--gold); text-align: right; }
 
 @media (max-width: 700px) {
+  .deckcols { grid-template-columns: minmax(0, 1fr); }
   :root { --card-w: clamp(44px, 12.4vw, 80px); }
   .minimap { width: 96px; height: 96px; }
   .hud-tr .chip { font-size: 12px; padding: 4px 8px; }

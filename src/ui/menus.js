@@ -253,6 +253,7 @@ export function pickCard(title, sub, cards, onPick, cancelable = false) {
 
 export function deckScreen(profile, { onChange, sfx } = {}) {
   const m = modal('<div class="deckview"></div>', { onClose: onChange });
+  m.el.classList.add('wide');
   const render = () => {
     const el = m.el.querySelector('.deckview');
     const order = { ember: 0, tide: 1, grove: 2, volt: 3 };
@@ -260,9 +261,13 @@ export function deckScreen(profile, { onChange, sfx } = {}) {
     el.innerHTML = `
       <h2>${profile.name}'s deck</h2>
       <div class="sub">${deck.length} cards · ${deck.filter((c) => c.creature).length} bound</div>
-      <h3>charms ${profile.charms.length}/${profile.maxCharms}</h3><div class="row charmrow" style="flex-wrap:wrap"></div>
-      <h3>cards</h3><div class="grid cards"></div>
-      <h3 data-tip="each hand type's base chips × mult. tomes from merchants level them up.">hand levels</h3><div class="levels"></div>`;
+      <div class="deckcols">
+        <div class="stacks"></div>
+        <div class="deckside">
+          <h3>charms ${profile.charms.length}/${profile.maxCharms}</h3><div class="row charmrow" style="flex-wrap:wrap"></div>
+          <h3 data-tip="each hand type's base chips × mult. tomes from merchants level them up.">hand levels</h3><div class="levels"></div>
+        </div>
+      </div>`;
     const cr = el.querySelector('.charmrow');
     if (!profile.charms.length) cr.innerHTML = '<span style="opacity:.6">none yet</span>';
     profile.charms.forEach((k, i) => {
@@ -280,8 +285,22 @@ export function deckScreen(profile, { onChange, sfx } = {}) {
       };
       cr.appendChild(c);
     });
-    const g = el.querySelector('.cards');
-    deck.forEach((c) => g.appendChild(cardEl(c, { small: true })));
+    // one overlapping row per element, squeezed to fit however many cards it holds
+    const stacks = el.querySelector('.stacks');
+    for (const e of Object.keys(order)) {
+      const cards = deck.filter((c) => c.el === e);
+      if (!cards.length) continue;
+      const row = document.createElement('div');
+      row.className = 'stack';
+      cards.forEach((c) => row.appendChild(cardEl(c, { small: true })));
+      stacks.appendChild(row);
+    }
+    for (const row of stacks.children) {
+      const n = row.children.length;
+      const w = row.firstChild.offsetWidth;
+      const step = n > 1 ? Math.min(w * 0.62, (row.clientWidth - w) / (n - 1)) : w;
+      row.style.setProperty('--step', `${step}px`);
+    }
     const lv = el.querySelector('.levels');
     HAND_ORDER.slice().reverse().forEach((t) => {
       const l = profile.handLevels[t] || 1;
