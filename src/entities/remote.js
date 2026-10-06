@@ -102,7 +102,7 @@ const num = (v, lim) => (Number.isFinite(v) && Math.abs(v) < lim ? v : 0);
 function sanitize(s) {
   if (!s || typeof s !== 'object') return null;
   return {
-    x: num(s.x, 1000), y: num(s.y, 200), z: num(s.z, 1000), f: num(s.f, 100),
+    x: num(s.x, 5000), y: num(s.y, 600), z: num(s.z, 5000), f: num(s.f, 100),
     a: typeof s.a === 'string' ? s.a.slice(0, 32) : 'Idle',
     m: typeof s.m === 'string' ? s.m : 'knight',
     n: typeof s.n === 'string' ? s.n.slice(0, 16) : 'wanderer',
